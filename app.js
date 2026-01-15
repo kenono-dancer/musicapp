@@ -22,6 +22,8 @@ const speedSlider = document.getElementById('speed-slider');
 const speedValue = document.getElementById('speed-value');
 const resetSpeedBtn = document.getElementById('reset-speed-btn');
 const pitchToggle = document.getElementById('pitch-toggle');
+const loadingOverlay = document.getElementById('loading-overlay');
+const playbackModeBtn = document.getElementById('playback-mode-toggle');
 
 // State
 let db;
@@ -30,10 +32,6 @@ let songs = [];
 let currentSongIndex = -1;
 let isDraggingSeek = false;
 let playbackMode = 'all'; // 'all' (Loop All), 'one' (Loop One), 'single' (Stop)
-
-// UI Refs
-const loadingOverlay = document.getElementById('loading-overlay');
-const playbackModeBtn = document.getElementById('playback-mode-btn');
 
 // Format Time
 function formatTime(seconds) {
@@ -305,7 +303,6 @@ function updatePitchPreservation() {
 }
 
 // Playback Mode Logic
-const playbackModeBtn = document.getElementById('playback-mode-toggle');
 
 // Icons
 const ICON_LOOP_ALL = `
