@@ -395,6 +395,16 @@ document.body.addEventListener('touchmove', function (e) { e.preventDefault(); }
 document.getElementById('library-view').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 document.querySelector('.modal-content').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 
-// Expose global functions
-window.deleteSong = deleteSong;
-window.moveSong = moveSong;
+// Force Update
+window.forceUpdate = function () {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            for (let registration of registrations) {
+                registration.unregister();
+            }
+            window.location.reload(true);
+        });
+    } else {
+        window.location.reload(true);
+    }
+};
