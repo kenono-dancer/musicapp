@@ -1,0 +1,20 @@
+{
+    "name": "Offline Music Player",
+    "short_name": "MusicPlayer",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "background_color": "#121212",
+    "theme_color": "#121212",
+    "icons": [
+        {
+            "src": "https://via.placeholder.com/192.png?text=Music",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "https://via.placeholder.com/512.png?text=Music",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
