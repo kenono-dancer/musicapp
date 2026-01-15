@@ -22,14 +22,16 @@ body {
     background-color: var(--bg-color);
     color: var(--text-primary);
     min-height: 100vh;
-    overflow: hidden; /* Prevent scrolling body, we scroll main */
+    overflow: hidden;
+    /* Prevent scrolling body, we scroll main */
 }
 
 .app-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    height: 100dvh; /* Dynamic viewport height for mobile */
+    height: 100dvh;
+    /* Dynamic viewport height for mobile */
     position: relative;
 }
 
@@ -63,14 +65,15 @@ header h1 {
 }
 
 .icon-btn:active {
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
 }
 
 /* Main Library */
 main {
     flex: 1;
     overflow-y: auto;
-    padding-bottom: 140px; /* Space for player bar */
+    padding-bottom: 140px;
+    /* Space for player bar */
 }
 
 #empty-state {
@@ -95,13 +98,13 @@ main {
     align-items: center;
     justify-content: space-between;
     padding: 1rem 1.5rem;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     cursor: pointer;
     transition: background 0.2s;
 }
 
 .song-item:active {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .song-item.active {
@@ -143,7 +146,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--glass-border);
     transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
     z-index: 100;
@@ -174,7 +177,7 @@ main {
     width: 100%;
     -webkit-appearance: none;
     height: 4px;
-    background: rgba(255,255,255,0.2);
+    background: rgba(255, 255, 255, 0.2);
     border-radius: 2px;
     outline: none;
 }
@@ -186,7 +189,7 @@ main {
     background: var(--text-primary);
     border-radius: 50%;
     cursor: pointer;
-    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
 }
 
 .controls-main {
@@ -216,7 +219,7 @@ main {
     background: var(--text-primary);
     color: var(--bg-color);
     border-radius: 50%;
-    box-shadow: 0 4px 12px rgba(255,255,255,0.2);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
 }
 
 .expand-btn {
@@ -275,7 +278,7 @@ main {
     align-items: center;
     justify-content: center;
     color: #404040;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
 }
 
 #modal-song-title {
@@ -285,7 +288,8 @@ main {
 }
 
 /* Sliders & Controls in Modal */
-.speed-control-section, .pitch-control-section {
+.speed-control-section,
+.pitch-control-section {
     width: 100%;
     max-width: 400px;
     background: var(--surface-color);
@@ -371,11 +375,11 @@ main {
     border-radius: 50%;
 }
 
-input:checked + .slider {
+input:checked+.slider {
     background-color: var(--primary-color);
 }
 
-input:checked + .slider:before {
+input:checked+.slider:before {
     transform: translateX(22px);
 }
 
@@ -386,6 +390,36 @@ input:checked + .slider:before {
     line-height: 1.4;
 }
 
-.hidden {
-    display: none !important;
+/* Playback Mode */
+.playback-mode-section {
+    width: 100%;
+    max-width: 400px;
+    background: var(--surface-color);
+    padding: 20px;
+    border-radius: 16px;
+}
+
+/* Reorder Buttons */
+.song-actions {
+    display: flex;
+    align-items: center;
+}
+
+.reorder-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 4px;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.reorder-btn:hover {
+    opacity: 1;
+    color: var(--text-primary);
+}
+
+.reorder-btn:disabled {
+    opacity: 0.2;
+    cursor: default;
 }

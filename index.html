@@ -101,15 +101,25 @@
 
                 <div class="speed-control-section">
                     <div class="control-row">
-                        <label>Speed: <span id="speed-value">1.0</span>x</label>
+                        <label>Speed: <span id="speed-value">1.00</span>x</label>
                         <button id="reset-speed-btn" class="text-btn">Reset</button>
                     </div>
-                    <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.05" value="1.0">
+                    <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.01" value="1.0">
                     <div class="slider-labels">
                         <span>0.5x</span>
                         <span>1.0x</span>
                         <span>1.5x</span>
                     </div>
+                </div>
+
+                <div class="playback-mode-section">
+                    <div class="control-row">
+                        <label>Playback Mode</label>
+                        <button id="playback-mode-btn" class="text-btn">Continuous</button>
+                    </div>
+                    <p class="description">
+                        Tap to toggle: Continuous / Single (Stop)
+                    </p>
                 </div>
 
                 <div class="pitch-control-section">

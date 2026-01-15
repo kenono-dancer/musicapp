@@ -29,6 +29,7 @@ let audio = new Audio();
 let songs = [];
 let currentSongIndex = -1;
 let isDraggingSeek = false;
+let playbackMode = 'continuous'; // 'continuous' or 'single'
 
 // Format Time
 function formatTime(seconds) {
@@ -39,7 +40,7 @@ function formatTime(seconds) {
 }
 
 // Initialize IndexedDB
-const request = indexedDB.open('MusicPlayerDB', 1);
+const request = indexedDB.open('MusicPlayerDB', 2); // Increment to trigger upgrade if needed (though schema same)
 
 request.onupgradeneeded = (e) => {
     db = e.target.result;
@@ -65,6 +66,21 @@ function loadSongs() {
 
     getAllReq.onsuccess = () => {
         songs = getAllReq.result;
+        // Sort by 'order' if exists, otherwise by id
+        songs.sort((a, b) => {
+            const orderA = a.order !== undefined ? a.order : a.id;
+            const orderB = b.order !== undefined ? b.order : b.id;
+            return orderA - orderB;
+        });
+
+        // Normalize orders
+        songs.forEach((song, index) => {
+            if (song.order !== index) {
+                song.order = index;
+                // We could update DB here to be clean, but lazy update is fine
+            }
+        });
+
         renderSongList();
     };
 }
@@ -75,7 +91,8 @@ function saveSong(file) {
     const song = {
         name: file.name,
         blob: file,
-        dateAdded: new Date()
+        dateAdded: new Date(),
+        order: songs.length // Append to end
     };
     store.add(song);
     transaction.oncomplete = () => loadSongs();
@@ -84,11 +101,55 @@ function saveSong(file) {
 function deleteSong(id, event) {
     event.stopPropagation();
     if (!confirm('Delete this song?')) return;
-    
+
+    // Check if deleting currently playing song
+    const idx = songs.findIndex(s => s.id === id);
+    if (idx === currentSongIndex) {
+        audio.pause();
+        audio.src = '';
+        currentTitle.textContent = 'Not Playing';
+        currentSongIndex = -1;
+        updatePlayPauseUI(false);
+    } else if (idx < currentSongIndex) {
+        currentSongIndex--;
+    }
+
     const transaction = db.transaction(['songs'], 'readwrite');
     const store = transaction.objectStore('songs');
     store.delete(id);
     transaction.oncomplete = () => loadSongs();
+}
+
+function moveSong(index, direction, event) {
+    event.stopPropagation();
+    const newIndex = index + direction;
+
+    if (newIndex < 0 || newIndex >= songs.length) return;
+
+    // Swap in array
+    const temp = songs[index];
+    songs[index] = songs[newIndex];
+    songs[newIndex] = temp;
+
+    // Update IDs for tracking playing song logic
+    if (currentSongIndex === index) currentSongIndex = newIndex;
+    else if (currentSongIndex === newIndex) currentSongIndex = index;
+
+    // Update 'order' in DB
+    const s1 = songs[index];
+    const s2 = songs[newIndex];
+
+    s1.order = index;
+    s2.order = newIndex;
+
+    const transaction = db.transaction(['songs'], 'readwrite');
+    const store = transaction.objectStore('songs');
+    store.put(s1);
+    store.put(s2);
+
+    transaction.oncomplete = () => {
+        renderSongList();
+    };
 }
 
 function renderSongList() {
@@ -99,19 +160,35 @@ function renderSongList() {
     } else {
         emptyState.classList.add('hidden');
         playerBar.classList.remove('hidden');
-        
+
         songs.forEach((song, index) => {
             const li = document.createElement('li');
             li.className = `song-item ${index === currentSongIndex ? 'active' : ''}`;
+
+            const isFirst = index === 0;
+            const isLast = index === songs.length - 1;
+
             li.innerHTML = `
                 <div class="song-item-info">
                     <div class="song-name">${song.name}</div>
                 </div>
-                <button class="delete-btn" onclick="deleteSong(${song.id}, event)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+                <div class="song-actions">
+                    <button class="reorder-btn" onclick="moveSong(${index}, -1, event)" ${isFirst ? 'disabled' : ''}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5z"/></svg>
+                    </button>
+                    <button class="reorder-btn" onclick="moveSong(${index}, 1, event)" ${isLast ? 'disabled' : ''}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                    </button>
+                    <button class="delete-btn" onclick="deleteSong(${song.id}, event)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </div>
             `;
-            li.onclick = () => playSong(index);
+            li.onclick = (e) => {
+                // Ignore clicks on buttons
+                if (e.target.closest('button')) return;
+                playSong(index);
+            };
             songList.appendChild(li);
         });
     }
@@ -119,25 +196,29 @@ function renderSongList() {
 
 function playSong(index) {
     if (index < 0 || index >= songs.length) return;
-    
+
     currentSongIndex = index;
     const song = songs[index];
+
+    // Revoke previous object URL to avoid leaks? 
+    // Usually browser handles it, but good practice if we were creating many.
+    // For simplicity, we just create new one.
     const url = URL.createObjectURL(song.blob);
-    
+
     audio.src = url;
     audio.play()
         .then(() => updatePlayPauseUI(true))
         .catch(e => console.error("Playback failed", e));
-        
+
     currentTitle.textContent = song.name;
     modalSongTitle.textContent = song.name;
-    
+
     // Apply current settings
     updateSpeed();
     updatePitchPreservation();
-    
+
     renderSongList(); // Retrieve active state
-    
+
     // Setup metadata
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -145,7 +226,7 @@ function playSong(index) {
             artist: 'My Music',
             album: 'Offline Player'
         });
-        
+
         navigator.mediaSession.setActionHandler('play', () => { audio.play(); });
         navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); });
         navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
@@ -172,6 +253,15 @@ function updatePlayPauseUI(isPlaying) {
     }
 }
 
+function handleSongEnd() {
+    if (playbackMode === 'single') {
+        updatePlayPauseUI(false);
+        // Do not advance
+    } else {
+        playNext();
+    }
+}
+
 function playNext() {
     let nextIndex = currentSongIndex + 1;
     if (nextIndex >= songs.length) nextIndex = 0;
@@ -191,22 +281,27 @@ function updateSpeed() {
 }
 
 function updatePitchPreservation() {
-    // preservesPitch logic
-    // In standard HTML5 Audio, playbackRate usually DOES preserve pitch (time stretch).
-    // To change pitch with speed (vinyl effect), we must set preservesPitch = false.
-    // However, browser support varies. 
-    // 'preservesPitch' (standard), 'mozPreservesPitch' (Firefox), 'webkitPreservesPitch' (Safari/Chrome legacy)
-    
     const preserve = pitchToggle.checked;
-    
+
     if (audio.preservesPitch !== undefined) {
         audio.preservesPitch = preserve;
     } else if (audio.mozPreservesPitch !== undefined) {
         audio.mozPreservesPitch = preserve;
     } else if (audio.webkitPreservesPitch !== undefined) {
         audio.webkitPreservesPitch = preserve;
+    }
+}
+
+// Playback Mode Logic
+const playbackModeBtn = document.getElementById('playback-mode-btn');
+
+function togglePlaybackMode() {
+    if (playbackMode === 'continuous') {
+        playbackMode = 'single';
+        playbackModeBtn.textContent = 'Single (Stop)';
     } else {
-        console.warn("preservesPitch not supported in this browser");
+        playbackMode = 'continuous';
+        playbackModeBtn.textContent = 'Continuous';
     }
 }
 
@@ -225,7 +320,7 @@ skipBackBtn.addEventListener('click', playPrev);
 
 audio.addEventListener('play', () => updatePlayPauseUI(true));
 audio.addEventListener('pause', () => updatePlayPauseUI(false));
-audio.addEventListener('ended', playNext);
+audio.addEventListener('ended', handleSongEnd);
 
 audio.addEventListener('timeupdate', () => {
     if (!isDraggingSeek) {
@@ -264,14 +359,13 @@ resetSpeedBtn.addEventListener('click', () => {
 });
 
 pitchToggle.addEventListener('change', updatePitchPreservation);
+playbackModeBtn.addEventListener('click', togglePlaybackMode);
 
 // Mobile: Prevent Pull-to-Refresh
-document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
-document.getElementById('library-view').addEventListener('touchmove', function(e) { e.stopPropagation(); }, { passive: true });
-document.querySelector('.modal-content').addEventListener('touchmove', function(e) { e.stopPropagation(); }, { passive: true });
+document.body.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+document.getElementById('library-view').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+document.querySelector('.modal-content').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 
-// Expose delete function to global scope
+// Expose global functions
 window.deleteSong = deleteSong;
-
-// Apply initial polyfills for pitch if needed
-// (Most modern browsers support preservesPitch or default to preserving it)
+window.moveSong = moveSong;
