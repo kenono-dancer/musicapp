@@ -305,19 +305,69 @@ function updatePitchPreservation() {
 }
 
 // Playback Mode Logic
+const playbackModeBtn = document.getElementById('playback-mode-toggle');
+
+// Icons
+const ICON_LOOP_ALL = `
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M17 2l4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+    <path d="M7 22l-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+</svg>`;
+
+const ICON_LOOP_ONE = `
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M17 2l4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+    <path d="M7 22l-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    <text x="10" y="15" font-size="8" fill="currentColor" font-weight="bold" stroke="none">1</text>
+</svg>`;
+
+const ICON_SINGLE = `
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M5 12h14" />
+    <path d="M13 18l6-6" />
+    <path d="M13 6l6 6" />
+    <path d="M21 6v12" />
+</svg>`;
+// Arrow right to bar (Skip/Stop icon like)
+
+function updatePlaybackModeIcon() {
+    if (playbackMode === 'all') {
+        playbackModeBtn.innerHTML = ICON_LOOP_ALL;
+        playbackModeBtn.style.color = 'var(--primary-color)';
+        playbackModeBtn.style.opacity = '1';
+    } else if (playbackMode === 'one') {
+        playbackModeBtn.innerHTML = ICON_LOOP_ONE;
+        playbackModeBtn.style.color = 'var(--primary-color)';
+        playbackModeBtn.style.opacity = '1';
+    } else {
+        // Single
+        playbackModeBtn.innerHTML = ICON_SINGLE;
+        playbackModeBtn.style.color = 'var(--text-secondary)';
+        playbackModeBtn.style.opacity = '0.7';
+    }
+}
+
 function togglePlaybackMode() {
     // Cycle: all -> one -> single -> all
     if (playbackMode === 'all') {
         playbackMode = 'one';
-        playbackModeBtn.textContent = 'Loop One 🔂';
+        // toast('Loop One');
     } else if (playbackMode === 'one') {
         playbackMode = 'single';
-        playbackModeBtn.textContent = 'Stop (Single) 🛑';
+        // toast('Single (Play Once)');
     } else {
         playbackMode = 'all';
-        playbackModeBtn.textContent = 'Loop All 🔁';
+        // toast('Loop All');
     }
+    updatePlaybackModeIcon();
 }
+
+// Initial Icon
+updatePlaybackModeIcon();
 
 // Event Listeners
 addMusicBtn.addEventListener('click', () => fileInput.click());

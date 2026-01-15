@@ -19,13 +19,24 @@
 <body>
     <div class="app-container">
         <header>
-            <h1>My Music</h1>
-            <button id="add-music-btn" class="icon-btn" aria-label="Add Music">
+            <button id="playback-mode-toggle" class="icon-btn" aria-label="Playback Mode">
+                <!-- Icon will be set by JS -->
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 5v14M5 12h14" />
+                    <path d="M17 2l4 4-4 4" />
+                    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                    <path d="M7 22l-4-4 4-4" />
+                    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
                 </svg>
             </button>
-            <input type="file" id="file-input" multiple style="display: none;">
+            <h1>My Music</h1>
+            <div class="header-right">
+                <button id="add-music-btn" class="icon-btn" aria-label="Add Music">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14" />
+                    </svg>
+                </button>
+                <input type="file" id="file-input" multiple style="display: none;">
+            </div>
         </header>
 
         <main id="library-view">
@@ -40,140 +51,158 @@
 
         <div id="player-bar" class="player-bar hidden">
             <div class="player-info">
-                <div class="song-title" id="current-title">Not Playing</div>
-                <div class="song-time">
-                    <span id="current-time">0:00</span> / <span id="duration">0:00</span>
-                </div>
+                <!-- ... player info ... -->
             </div>
+            <!-- ... sliders/controls ... -->
+            <!-- We need to preserve the inner content of player-bar if we replace the block, 
+                 but replacing the header block above is safer. 
+                 Wait, I should target the header specifically. -->
 
-            <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.1">
 
-            <div class="controls-main">
-                <!-- Track Prev -->
-                <button id="skip-back-btn" class="control-btn sm">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
-                    </svg>
-                </button>
-
-                <!-- Time Skips Back -->
-                <div class="skip-group">
-                    <button class="control-btn xs" onclick="skipTime(-10)">-10</button>
-                    <button class="control-btn xs" onclick="skipTime(-5)">-5</button>
+            <div id="player-bar" class="player-bar hidden">
+                <div class="player-info">
+                    <div class="song-title" id="current-title">Not Playing</div>
+                    <div class="song-time">
+                        <span id="current-time">0:00</span> / <span id="duration">0:00</span>
+                    </div>
                 </div>
 
-                <!-- Play/Pause -->
-                <button id="play-pause-btn" class="control-btn lg">
-                    <svg id="play-icon" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M8 5v14l11-7z" />
-                    </svg>
-                    <svg id="pause-icon" class="hidden" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                    </svg>
-                </button>
+                <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.1">
 
-                <!-- Time Skips Fwd -->
-                <div class="skip-group">
-                    <button class="control-btn xs" onclick="skipTime(5)">+5</button>
-                    <button class="control-btn xs" onclick="skipTime(10)">+10</button>
+                <div class="controls-main">
+                    <!-- Track Prev -->
+                    <button id="skip-back-btn" class="control-btn sm">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
+                        </svg>
+                    </button>
+
+                    <!-- Time Skips Back -->
+                    <div class="skip-group">
+                        <button class="control-btn xs" onclick="skipTime(-10)">-10</button>
+                        <button class="control-btn xs" onclick="skipTime(-5)">-5</button>
+                    </div>
+
+                    <!-- Play/Pause -->
+                    <button id="play-pause-btn" class="control-btn lg">
+                        <svg id="play-icon" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z" />
+                        </svg>
+                        <svg id="pause-icon" class="hidden" width="32" height="32" viewBox="0 0 24 24"
+                            fill="currentColor">
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                        </svg>
+                    </button>
+
+                    <!-- Time Skips Fwd -->
+                    <div class="skip-group">
+                        <button class="control-btn xs" onclick="skipTime(5)">+5</button>
+                        <button class="control-btn xs" onclick="skipTime(10)">+10</button>
+                    </div>
+
+                    <!-- Track Next -->
+                    <button id="skip-fwd-btn" class="control-btn sm">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
+                        </svg>
+                    </button>
                 </div>
 
-                <!-- Track Next -->
-                <button id="skip-fwd-btn" class="control-btn sm">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
-                    </svg>
-                </button>
-            </div>
-
-            <button id="expand-controls-btn" class="expand-btn">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M18 15l-6-6-6 6" />
-                </svg>
-            </button>
-        </div>
-
-        <!-- Loading Overlay -->
-        <div id="loading-overlay" class="hidden">
-            <div class="spinner"></div>
-            <p>Loading...</p>
-        </div>
-
-        <!-- Expanded Player / Settings Modal -->
-        <div id="player-modal" class="modal hidden">
-            <div class="modal-header">
-                <h2>Now Playing</h2>
-                <button id="close-modal-btn" class="icon-btn">
+                <button id="expand-controls-btn" class="expand-btn">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M6 18L18 6M6 6l12 12" />
+                        <path d="M18 15l-6-6-6 6" />
                     </svg>
                 </button>
             </div>
 
-            <div class="modal-content">
-                <div class="cover-art-placeholder">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                        <path d="M9 18V5l12-2v13" />
-                        <circle cx="6" cy="18" r="3" />
-                        <circle cx="18" cy="16" r="3" />
-                    </svg>
-                </div>
-                <h3 id="modal-song-title">Song Title</h3>
+            <!-- Loading Overlay -->
+            <div id="loading-overlay" class="hidden">
+                <div class="spinner"></div>
+                <p>Loading...</p>
+            </div>
 
-                <div class="speed-control-section">
-                    <div class="control-row">
-                        <label>Speed: <span id="speed-value">1.00</span>x</label>
-                        <button id="reset-speed-btn" class="text-btn">Reset</button>
-                    </div>
-                    <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.01" value="1.0">
-                    <div class="slider-labels">
-                        <span>0.5x</span>
-                        <span>1.0x</span>
-                        <span>1.5x</span>
-                    </div>
+            <!-- Expanded Player / Settings Modal -->
+            <div id="player-modal" class="modal hidden">
+                <div class="modal-header">
+                    <h2>Now Playing</h2>
+                    <button id="close-modal-btn" class="icon-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
 
-                <div class="playback-mode-section">
-                    <div class="control-row">
-                        <label>Playback Mode</label>
-                        <button id="playback-mode-btn" class="text-btn">Loop All</button>
+                <div class="modal-content">
+                    <div class="cover-art-placeholder">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1">
+                            <path d="M9 18V5l12-2v13" />
+                            <circle cx="6" cy="18" r="3" />
+                            <circle cx="18" cy="16" r="3" />
+                        </svg>
                     </div>
-                    <p class="description">
-                        Loop All 🔁 &rarr; Loop One 🔂 &rarr; Stop (Single) 🛑
-                    </p>
-                </div>
+                    <h3 id="modal-song-title">Song Title</h3>
 
-                <div class="pitch-control-section">
-                    <div class="control-row">
-                        <label for="pitch-toggle">Preserve Pitch</label>
-                        <div class="toggle-switch">
-                            <input type="checkbox" id="pitch-toggle" checked>
-                            <span class="slider round"></span>
+                    <div class="speed-control-section">
+                        <div class="control-row">
+                            <label>Speed: <span id="speed-value">1.00</span>x</label>
+                            <button id="reset-speed-btn" class="text-btn">Reset</button>
+                        </div>
+                        <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.01" value="1.0">
+                        <div class="slider-labels">
+                            <span>0.5x</span>
+                            <span>1.0x</span>
+                            <span>1.5x</span>
                         </div>
                     </div>
-                    <p class="description">
-                        ON: Key stays the same.<br>
-                        OFF: Key changes with speed.
-                    </p>
-                </div>
 
-                <div class="version-info" style="text-align: center; color: #555; font-size: 0.7rem; margin-top: 20px;">
-                    App Version: 2.4 <br>
-                    <button id="force-update-btn"
-                        style="background:none; border:1px solid #555; border-radius:4px; color:#555; padding:4px 8px; margin-top:8px;"
-                        onclick="forceUpdate()">Tap to Force Update</button>
+                    <div class="pitch-control-section">
+                        <div class="control-row">
+                            <label for="pitch-toggle">Preserve Pitch</label>
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="pitch-toggle" checked>
+                                <span class="slider round"></span>
+                            </div>
+                        </div>
+                        <p class="description">
+                            ON: Key stays the same.<br>
+                            OFF: Key changes with speed.
+                        </p>
+                    </div>
+
+                    <div class="pitch-control-section">
+                        <div class="control-row">
+                            <label for="pitch-toggle">Preserve Pitch</label>
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="pitch-toggle" checked>
+                                <span class="slider round"></span>
+                            </div>
+                        </div>
+                        <p class="description">
+                            ON: Key stays the same.<br>
+                            OFF: Key changes with speed.
+                        </p>
+                    </div>
+
+                    <div class="version-info"
+                        style="text-align: center; color: #555; font-size: 0.7rem; margin-top: 20px;">
+                        App Version: 2.5 <br>
+                        <button id="force-update-btn"
+                            style="background:none; border:1px solid #555; border-radius:4px; color:#555; padding:4px 8px; margin-top:8px;"
+                            onclick="forceUpdate()">Tap to Force Update</button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-    <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SW registered', reg))
-                .catch(err => console.error('SW registration failed', err));
-        }
-    </script>
+        <script src="app.js"></script>
+        <script>
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW registered', reg))
+                    .catch(err => console.error('SW registration failed', err));
+            }
+        </script>
 </body>
 
 </html>
