@@ -78,6 +78,12 @@
             </button>
         </div>
 
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="hidden">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+
         <!-- Expanded Player / Settings Modal -->
         <div id="player-modal" class="modal hidden">
             <div class="modal-header">
@@ -115,10 +121,10 @@
                 <div class="playback-mode-section">
                     <div class="control-row">
                         <label>Playback Mode</label>
-                        <button id="playback-mode-btn" class="text-btn">Continuous</button>
+                        <button id="playback-mode-btn" class="text-btn">Loop All</button>
                     </div>
                     <p class="description">
-                        Tap to toggle: Continuous / Single (Stop)
+                        Loop All 🔁 &rarr; Loop One 🔂 &rarr; Stop (Single) 🛑
                     </p>
                 </div>
 
@@ -134,6 +140,10 @@
                         ON: Key stays the same.<br>
                         OFF: Key changes with speed.
                     </p>
+                </div>
+
+                <div class="version-info" style="text-align: center; color: #555; font-size: 0.7rem; margin-top: 20px;">
+                    App Version: 2.1
                 </div>
             </div>
         </div>

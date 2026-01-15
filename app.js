@@ -29,7 +29,11 @@ let audio = new Audio();
 let songs = [];
 let currentSongIndex = -1;
 let isDraggingSeek = false;
-let playbackMode = 'continuous'; // 'continuous' or 'single'
+let playbackMode = 'all'; // 'all' (Loop All), 'one' (Loop One), 'single' (Stop)
+
+// UI Refs
+const loadingOverlay = document.getElementById('loading-overlay');
+const playbackModeBtn = document.getElementById('playback-mode-btn');
 
 // Format Time
 function formatTime(seconds) {
@@ -86,16 +90,19 @@ function loadSongs() {
 }
 
 function saveSong(file) {
-    const transaction = db.transaction(['songs'], 'readwrite');
-    const store = transaction.objectStore('songs');
-    const song = {
-        name: file.name,
-        blob: file,
-        dateAdded: new Date(),
-        order: songs.length // Append to end
-    };
-    store.add(song);
-    transaction.oncomplete = () => loadSongs();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['songs'], 'readwrite');
+        const store = transaction.objectStore('songs');
+        const song = {
+            name: file.name,
+            blob: file,
+            dateAdded: new Date(),
+            order: songs.length // Append to end
+        };
+        const req = store.add(song);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
 }
 
 function deleteSong(id, event) {
@@ -254,10 +261,15 @@ function updatePlayPauseUI(isPlaying) {
 }
 
 function handleSongEnd() {
-    if (playbackMode === 'single') {
+    if (playbackMode === 'one') {
+        // Loop One
+        audio.currentTime = 0;
+        audio.play();
+    } else if (playbackMode === 'single') {
+        // Stop (Single)
         updatePlayPauseUI(false);
-        // Do not advance
     } else {
+        // Loop All (default)
         playNext();
     }
 }
@@ -293,24 +305,41 @@ function updatePitchPreservation() {
 }
 
 // Playback Mode Logic
-const playbackModeBtn = document.getElementById('playback-mode-btn');
-
 function togglePlaybackMode() {
-    if (playbackMode === 'continuous') {
+    // Cycle: all -> one -> single -> all
+    if (playbackMode === 'all') {
+        playbackMode = 'one';
+        playbackModeBtn.textContent = 'Loop One 🔂';
+    } else if (playbackMode === 'one') {
         playbackMode = 'single';
-        playbackModeBtn.textContent = 'Single (Stop)';
+        playbackModeBtn.textContent = 'Stop (Single) 🛑';
     } else {
-        playbackMode = 'continuous';
-        playbackModeBtn.textContent = 'Continuous';
+        playbackMode = 'all';
+        playbackModeBtn.textContent = 'Loop All 🔁';
     }
 }
 
 // Event Listeners
 addMusicBtn.addEventListener('click', () => fileInput.click());
 
-fileInput.addEventListener('change', (e) => {
+fileInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
-    files.forEach(file => saveSong(file));
+    if (files.length === 0) return;
+
+    loadingOverlay.classList.remove('hidden');
+    let loadedCount = 0;
+    const total = files.length;
+    loadingOverlay.querySelector('p').textContent = `Loading 0/${total}...`;
+
+    // Process sequentially to maintain order and not freeze UI too much
+    for (const file of files) {
+        await saveSong(file);
+        loadedCount++;
+        loadingOverlay.querySelector('p').textContent = `Loading ${loadedCount}/${total}...`;
+    }
+
+    loadSongs(); // Reload list once
+    loadingOverlay.classList.add('hidden');
     fileInput.value = ''; // Reset
 });
 
