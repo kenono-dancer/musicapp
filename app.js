@@ -395,6 +395,13 @@ document.body.addEventListener('touchmove', function (e) { e.preventDefault(); }
 document.getElementById('library-view').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 document.querySelector('.modal-content').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 
+// Skip Time
+window.skipTime = function (seconds) {
+    if (audio.src) {
+        audio.currentTime += seconds;
+    }
+};
+
 // Force Update
 window.forceUpdate = function () {
     if ('serviceWorker' in navigator) {

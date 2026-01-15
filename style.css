@@ -196,7 +196,13 @@ main {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 24px;
+    gap: 12px;
+    width: 100%;
+}
+
+.skip-group {
+    display: flex;
+    gap: 8px;
 }
 
 .control-btn {
@@ -207,6 +213,7 @@ main {
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: transform 0.1s;
 }
 
 .control-btn:active {
@@ -220,6 +227,24 @@ main {
     color: var(--bg-color);
     border-radius: 50%;
     box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+}
+
+.control-btn.sm {
+    padding: 8px;
+}
+
+.control-btn.xs {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .expand-btn {
