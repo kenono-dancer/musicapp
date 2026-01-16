@@ -671,7 +671,7 @@ async function syncDropboxFiles() {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${cloudAccessToken}`,
-                'Dropbox-API-Arg': JSON.stringify({ path: file.path_lower })
+                'Dropbox-API-Arg': jsonToHeaderSafe({ path: file.path_lower })
             }
         });
 
@@ -690,6 +690,12 @@ async function syncDropboxFiles() {
 
     // Refresh list
     loadSongs();
+}
+
+function jsonToHeaderSafe(obj) {
+    return JSON.stringify(obj).replace(/[\u007f-\uffff]/g, c =>
+        '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4)
+    );
 }
 
 function isMusicFile(filename) {
