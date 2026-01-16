@@ -83,7 +83,7 @@ header h1 {
 main {
     flex: 1;
     overflow-y: auto;
-    padding-bottom: 220px;
+    padding-bottom: 260px;
     /* Space for player bar + footer */
     display: flex;
     flex-direction: column;
@@ -139,7 +139,7 @@ main {
 /* Player Bar */
 .player-bar {
     position: absolute;
-    bottom: 60px;
+    bottom: 100px;
     left: 16px;
     right: 16px;
     background: var(--glass-bg);
