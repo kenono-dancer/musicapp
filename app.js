@@ -512,8 +512,20 @@ toggleManualTokenBtn.addEventListener('click', () => {
 });
 
 cloudConnectBtn.addEventListener('click', () => {
+    // DISCONNECT ACTION
+    if (cloudAccessToken) {
+        if (!confirm('Disconnect from Dropbox? This will remove the saved Access Token.')) return;
+        cloudAccessToken = null;
+        localStorage.removeItem('cloud_access_token');
+        updateCloudUI();
+        setCloudStatus('Disconnected.', 'info');
+        cloudManualTokenInput.value = ''; // Clear input
+        return;
+    }
+
     // Check if using Manual Token
     if (!cloudManualTokenInput.classList.contains('hidden')) {
+        const token = cloudManualTokenInput.value.trim();
         if (!token) {
             alert('Please enter an Access Token');
             return;
@@ -567,26 +579,35 @@ cloudSyncBtn.addEventListener('click', async () => {
         // Clear token on auth/permission errors to allow reconnection
         const errStr = (e.message || '').toString();
         if (e.status === 401 || errStr.includes('missing_scope') || errStr.includes('access_denied')) {
-            cloudAccessToken = null;
-            localStorage.removeItem('cloud_access_token');
-            updateCloudUI();
-            alert('Permission error detected. Please Connect again to grant new permissions.');
+            // Keep token for a moment to let user see error, but allow disconnect
+            // alert('Permission error detected. Please Disconnect and verify Permissions/Token.');
         }
     }
 });
 
 function updateCloudUI() {
     if (cloudAccessToken) {
-        cloudConnectBtn.textContent = 'Connected';
+        cloudConnectBtn.textContent = 'Disconnect';
         cloudConnectBtn.classList.remove('primary');
-        cloudConnectBtn.disabled = true;
+        cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
+        cloudConnectBtn.disabled = false; // Enable click to disconnect
+
         cloudAppKeyInput.disabled = true;
         cloudSyncBtn.disabled = false;
+        toggleManualTokenBtn.classList.add('hidden'); // Hide manual toggle when connected
     } else {
         cloudConnectBtn.textContent = 'Connect';
+        cloudConnectBtn.classList.remove('primary');
+        cloudConnectBtn.style.background = '#0061FE'; // Dropbox Blue
+
         cloudConnectBtn.disabled = false;
         cloudAppKeyInput.disabled = false;
         cloudSyncBtn.disabled = true;
+
+        toggleManualTokenBtn.classList.remove('hidden');
+        if (!cloudManualTokenInput.classList.contains('hidden')) { // Corrected condition
+            cloudConnectBtn.textContent = 'Save Token';
+        }
     }
 }
 
