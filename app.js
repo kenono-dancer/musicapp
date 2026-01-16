@@ -377,6 +377,7 @@ const actionSheetBackdrop = document.getElementById('action-sheet-backdrop');
 const musicImportGuide = document.getElementById('music-import-guide');
 const closeGuideBtn = document.getElementById('close-guide-btn');
 const guideOkBtn = document.getElementById('guide-ok-btn');
+const openMusicAppBtn = document.getElementById('open-music-app-btn');
 
 // Show Import Menu
 addMusicBtn.addEventListener('click', () => {
@@ -409,6 +410,13 @@ function closeGuide() {
 }
 closeGuideBtn.addEventListener('click', closeGuide);
 guideOkBtn.addEventListener('click', closeGuide);
+
+openMusicAppBtn.addEventListener('click', () => {
+    window.location.href = 'music://';
+    setTimeout(() => {
+        closeGuide();
+    }, 500);
+});
 
 // fileInput listener remains below...
 
