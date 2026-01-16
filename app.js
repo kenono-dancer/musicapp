@@ -514,13 +514,14 @@ toggleManualTokenBtn.addEventListener('click', () => {
 cloudConnectBtn.addEventListener('click', () => {
     // Check if using Manual Token
     if (!cloudManualTokenInput.classList.contains('hidden')) {
-        const token = cloudManualTokenInput.value.trim();
         if (!token) {
             alert('Please enter an Access Token');
             return;
         }
-        cloudAccessToken = token;
-        localStorage.setItem('cloud_access_token', token);
+        // Sanitize token (remove newlines/spaces)
+        const cleanToken = token.trim();
+        cloudAccessToken = cleanToken;
+        localStorage.setItem('cloud_access_token', cleanToken);
         updateCloudUI();
         setCloudStatus('Token saved manually!', 'success');
         // Reset UI state
@@ -647,8 +648,16 @@ async function syncDropboxFiles() {
         });
 
         if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error_summary || 'Failed to list files');
+            const errorText = await response.text();
+            let errorMsg;
+            try {
+                const errJson = JSON.parse(errorText);
+                errorMsg = errJson.error_summary;
+            } catch (e) {
+                // Not JSON, use text directly (e.g. "Error in call to API function...")
+                errorMsg = errorText;
+            }
+            throw new Error(errorMsg || 'Failed to list files');
         }
 
         const data = await response.json();
