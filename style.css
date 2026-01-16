@@ -83,7 +83,7 @@ header h1 {
 main {
     flex: 1;
     overflow-y: auto;
-    padding-bottom: 140px;
+    padding-bottom: 200px;
     /* Space for player bar */
     display: flex;
     flex-direction: column;
