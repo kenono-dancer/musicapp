@@ -584,9 +584,9 @@ input:checked+.slider:before {
 /* Modal Footer Version */
 .version-info-footer {
     width: 100%;
-    margin-top: auto;
+    /* Removed margin-top: auto to prevent overlapping with player bar on short lists */
     padding-top: 32px;
-    padding-bottom: 8px;
+    padding-bottom: 24px;
     display: flex;
     justify-content: center;
     align-items: center;
