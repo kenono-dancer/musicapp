@@ -47,6 +47,11 @@
             <ul id="song-list">
                 <!-- Songs will be injected here -->
             </ul>
+            <footer class="app-footer">
+                <span id="footer-version" onclick="forceUpdate()">App Version: 2.11</span>
+                <span class="footer-separator">•</span>
+                <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
+            </footer>
         </main>
 
         <div id="player-bar" class="player-bar hidden">
@@ -158,12 +163,7 @@
                     </p>
                 </div>
 
-                <div class="version-info" style="text-align: center; color: #555; font-size: 0.7rem; margin-top: 20px;">
-                    App Version: 2.10 <br>
-                    <button id="force-update-btn"
-                        style="background:none; border:1px solid #555; border-radius:4px; color:#555; padding:4px 8px; margin-top:8px;"
-                        onclick="forceUpdate()">Tap to Force Update</button>
-                </div>
+                <div class="version-info" style="display: none;"></div>
             </div>
         </div>
 
