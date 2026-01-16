@@ -1,4 +1,4 @@
-const CACHE_NAME = 'music-player-v16';
+const CACHE_NAME = 'music-player-v17';
 const ASSETS = [
     './',
     './index.html',
