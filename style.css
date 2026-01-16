@@ -40,21 +40,25 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.5rem;
+    padding: calc(env(safe-area-inset-top) + 20px) 1.5rem 1rem 1.5rem;
     background: rgba(18, 18, 18, 0.95);
     z-index: 10;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--glass-border);
+    position: relative;
+    /* Ensure stacking context */
 }
 
 header h1 {
     font-size: 1.2rem;
     font-weight: 600;
     letter-spacing: -0.5px;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    /* Remove absolute positioning to let flexbox handle alignment with padding */
+    flex: 1;
+    text-align: center;
+    margin: 0 16px;
+    /* Ensure space from buttons */
 }
 
 .header-right {
