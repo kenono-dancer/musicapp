@@ -563,10 +563,14 @@ cloudSyncBtn.addEventListener('click', async () => {
         console.error('Sync error:', e);
         setCloudStatus('Sync failed: ' + (e.message || e), 'error');
         cloudSyncBtn.disabled = false;
-        if (e.status === 401) {
+
+        // Clear token on auth/permission errors to allow reconnection
+        const errStr = (e.message || '').toString();
+        if (e.status === 401 || errStr.includes('missing_scope') || errStr.includes('access_denied')) {
             cloudAccessToken = null;
             localStorage.removeItem('cloud_access_token');
             updateCloudUI();
+            alert('Permission error detected. Please Connect again to grant new permissions.');
         }
     }
 });
