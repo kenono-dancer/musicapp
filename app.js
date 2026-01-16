@@ -367,7 +367,50 @@ function togglePlaybackMode() {
 updatePlaybackModeIcon();
 
 // Event Listeners
-addMusicBtn.addEventListener('click', () => fileInput.click());
+// Import Components
+const importMenuOverlay = document.getElementById('import-menu-overlay');
+const btnImportFile = document.getElementById('btn-import-file');
+const btnImportMusic = document.getElementById('btn-import-music');
+const btnImportCancel = document.getElementById('btn-import-cancel');
+const actionSheetBackdrop = document.getElementById('action-sheet-backdrop');
+
+const musicImportGuide = document.getElementById('music-import-guide');
+const closeGuideBtn = document.getElementById('close-guide-btn');
+const guideOkBtn = document.getElementById('guide-ok-btn');
+
+// Show Import Menu
+addMusicBtn.addEventListener('click', () => {
+    importMenuOverlay.classList.remove('hidden');
+});
+
+// Hide Import Menu
+function closeImportMenu() {
+    importMenuOverlay.classList.add('hidden');
+}
+
+btnImportCancel.addEventListener('click', closeImportMenu);
+actionSheetBackdrop.addEventListener('click', closeImportMenu);
+
+// Option 1: File
+btnImportFile.addEventListener('click', () => {
+    closeImportMenu();
+    fileInput.click();
+});
+
+// Option 2: Music App (Guide)
+btnImportMusic.addEventListener('click', () => {
+    closeImportMenu();
+    musicImportGuide.classList.remove('hidden');
+});
+
+// Guide Logic
+function closeGuide() {
+    musicImportGuide.classList.add('hidden');
+}
+closeGuideBtn.addEventListener('click', closeGuide);
+guideOkBtn.addEventListener('click', closeGuide);
+
+// fileInput listener remains below...
 
 fileInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);

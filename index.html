@@ -159,10 +159,66 @@
                 </div>
 
                 <div class="version-info" style="text-align: center; color: #555; font-size: 0.7rem; margin-top: 20px;">
-                    App Version: 2.8 <br>
+                    App Version: 2.9 <br>
                     <button id="force-update-btn"
                         style="background:none; border:1px solid #555; border-radius:4px; color:#555; padding:4px 8px; margin-top:8px;"
                         onclick="forceUpdate()">Tap to Force Update</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import Action Sheet Overlay -->
+        <div id="import-menu-overlay" class="hidden">
+            <div class="action-sheet-backdrop" id="action-sheet-backdrop"></div>
+            <div class="action-sheet">
+                <div class="action-sheet-group">
+                    <button class="action-btn" id="btn-import-file">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        Select from Files
+                    </button>
+                    <button class="action-btn" id="btn-import-music">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M9 18V5l12-2v13"></path>
+                            <circle cx="6" cy="18" r="3"></circle>
+                            <circle cx="18" cy="16" r="3"></circle>
+                        </svg>
+                        Select from Music App
+                    </button>
+                </div>
+                <div class="action-sheet-group">
+                    <button class="action-btn cancel" id="btn-import-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Music App Import Guide Modal -->
+        <div id="music-import-guide" class="modal hidden">
+            <div class="modal-header">
+                <h2>Import from Music App</h2>
+                <button id="close-guide-btn" class="icon-btn">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-content" style="text-align: left; align-items: flex-start; padding: 0 16px;">
+                <p>Due to iOS security restrictions, web apps cannot directly access your Music Library.</p>
+                <br>
+                <h3>How to Import:</h3>
+                <ol style="margin-left: 20px; line-height: 1.6;">
+                    <li>Open the <strong>Music</strong> app.</li>
+                    <li>Find the song you want to add.</li>
+                    <li>Tap <strong>...</strong> and choose <strong>Download</strong>.</li>
+                    <li>Export/Share the song to the <strong>Files</strong> app.</li>
+                    <li>Return here and choose <strong>Select from Files</strong>.</li>
+                </ol>
+                <div style="width: 100%; display: flex; justify-content: center; margin-top: 32px;">
+                    <button class="control-btn lg" id="guide-ok-btn">OK</button>
                 </div>
             </div>
         </div>
