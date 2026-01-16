@@ -85,6 +85,8 @@ main {
     overflow-y: auto;
     padding-bottom: 140px;
     /* Space for player bar */
+    display: flex;
+    flex-direction: column;
 }
 
 #empty-state {
@@ -92,7 +94,8 @@ main {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 60%;
+    flex-grow: 1;
+    min-height: 50%;
     color: var(--text-secondary);
     text-align: center;
     gap: 1rem;
