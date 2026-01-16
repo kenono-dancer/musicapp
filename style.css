@@ -577,3 +577,33 @@ input:checked+.slider:before {
         transform: translateY(0);
     }
 }
+
+/* Modal Footer Version */
+.version-info-footer {
+    width: 100%;
+    margin-top: auto;
+    padding-top: 32px;
+    padding-bottom: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+.version-info-footer span,
+.version-info-footer a {
+    cursor: pointer;
+}
+
+.version-info-footer a {
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.version-info-footer a:hover {
+    text-decoration: underline;
+    opacity: 1;
+}
