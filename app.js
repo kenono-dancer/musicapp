@@ -540,7 +540,7 @@ cloudConnectBtn.addEventListener('click', () => {
 
     // Redirect to Dropbox Auth
     const redirectUri = window.location.href.split('#')[0].split('?')[0];
-    const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${key}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${key}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=files.metadata.read files.content.read`;
     window.location.href = authUrl;
 });
 
