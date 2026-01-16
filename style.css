@@ -83,23 +83,13 @@ header h1 {
 main {
     flex: 1;
     overflow-y: auto;
-    padding-bottom: 200px;
-    /* Space for player bar */
+    padding-bottom: 220px;
+    /* Space for player bar + footer */
     display: flex;
     flex-direction: column;
 }
 
-#empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex-grow: 1;
-    min-height: 50%;
-    color: var(--text-secondary);
-    text-align: center;
-    gap: 1rem;
-}
+
 
 /* Song List */
 #song-list {
@@ -149,7 +139,7 @@ main {
 /* Player Bar */
 .player-bar {
     position: absolute;
-    bottom: 24px;
+    bottom: 60px;
     left: 16px;
     right: 16px;
     background: var(--glass-bg);
@@ -583,10 +573,12 @@ input:checked+.slider:before {
 
 /* Modal Footer Version */
 .version-info-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
     width: 100%;
-    /* Removed margin-top: auto to prevent overlapping with player bar on short lists */
-    padding-top: 32px;
-    padding-bottom: 24px;
+    padding-top: 12px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -594,6 +586,9 @@ input:checked+.slider:before {
     font-size: 0.7rem;
     color: var(--text-secondary);
     opacity: 0.6;
+    z-index: 90;
+    /* Below player bar (100) */
+    background: linear-gradient(to top, rgba(18, 18, 18, 1), rgba(18, 18, 18, 0));
 }
 
 .version-info-footer span,
