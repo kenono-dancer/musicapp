@@ -164,6 +164,48 @@
                     </p>
                 </div>
 
+                <div class="cloud-sync-section"
+                    style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <h3>Cloud Sync</h3>
+                    <div class="control-row" style="margin-bottom: 12px;">
+                        <label>Service</label>
+                        <select id="cloud-service-select"
+                            style="background: #333; color: white; border: none; padding: 4px 8px; border-radius: 4px;">
+                            <option value="dropbox">Dropbox</option>
+                            <!-- <option value="gdrive" disabled>Google Drive (Coming Soon)</option> -->
+                        </select>
+                    </div>
+                    <div class="control-row"
+                        style="flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px;">
+                        <label for="cloud-folder-path" style="font-size: 0.9em; color: #aaa;">Folder Path
+                            (Optional)</label>
+                        <input type="text" id="cloud-folder-path" placeholder="/Music" value="/"
+                            style="width: 100%; background: #333; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px;">
+                        <p style="font-size: 0.75em; color: #888;">Leave as / for root</p>
+                    </div>
+                    <div class="control-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <label for="cloud-app-key" style="font-size: 0.9em; color: #aaa;">App Key (Client ID)</label>
+                        <input type="text" id="cloud-app-key" placeholder="Enter Dropbox App Key"
+                            style="width: 100%; background: #333; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px;">
+                        <div style="width: 100%; text-align: right;">
+                            <button id="toggle-manual-token-btn" class="text-btn"
+                                style="font-size: 0.75em; color: #0061FE;">Or enter Access Token manually</button>
+                        </div>
+                        <input type="text" id="cloud-manual-token" placeholder="Paste long Access Token here"
+                            class="hidden"
+                            style="width: 100%; background: #333; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px; margin-top: 4px;">
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 10px;">
+                        <button id="cloud-connect-btn" class="control-btn sm"
+                            style="width: auto; padding: 0 16px; font-size: 14px; background: #0061FE;">Connect</button>
+                        <button id="cloud-sync-btn" class="control-btn sm"
+                            style="width: auto; padding: 0 16px; font-size: 14px; background: #28a745;"
+                            disabled>Sync</button>
+                    </div>
+                    <p id="cloud-status-msg" style="font-size: 0.8em; color: #aaa; margin-top: 8px; min-height: 1.2em;">
+                    </p>
+                </div>
+
                 <div class="version-info-footer">
                     <span onclick="forceUpdate()">App Version: 2.12</span>
                     <span class="footer-separator">•</span>

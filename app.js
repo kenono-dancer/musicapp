@@ -464,3 +464,235 @@ window.forceUpdate = function () {
         window.location.reload(true);
     }
 };
+
+// Cloud Sync (Dropbox) Logic
+const cloudServiceSelect = document.getElementById('cloud-service-select');
+const cloudFolderPathInput = document.getElementById('cloud-folder-path');
+const cloudAppKeyInput = document.getElementById('cloud-app-key');
+const cloudConnectBtn = document.getElementById('cloud-connect-btn');
+const cloudSyncBtn = document.getElementById('cloud-sync-btn');
+const cloudStatusMsg = document.getElementById('cloud-status-msg');
+
+// Manual Token Elements
+const toggleManualTokenBtn = document.getElementById('toggle-manual-token-btn');
+const cloudManualTokenInput = document.getElementById('cloud-manual-token');
+
+let cloudAccessToken = localStorage.getItem('cloud_access_token');
+let cloudAppKey = localStorage.getItem('cloud_app_key');
+let cloudFolderPath = localStorage.getItem('cloud_folder_path') || '/';
+
+// Restore inputs
+if (cloudAppKey) cloudAppKeyInput.value = cloudAppKey;
+if (cloudFolderPath) cloudFolderPathInput.value = cloudFolderPath;
+updateCloudUI();
+
+// Event Listeners
+toggleManualTokenBtn.addEventListener('click', () => {
+    cloudManualTokenInput.classList.toggle('hidden');
+    if (cloudManualTokenInput.classList.contains('hidden')) {
+        toggleManualTokenBtn.textContent = 'Or enter Access Token manually';
+        cloudAppKeyInput.disabled = false;
+        if (!cloudAccessToken) cloudConnectBtn.textContent = 'Connect';
+    } else {
+        toggleManualTokenBtn.textContent = 'Use App Key';
+        cloudAppKeyInput.disabled = true;
+        cloudConnectBtn.textContent = 'Save Token';
+    }
+});
+
+cloudConnectBtn.addEventListener('click', () => {
+    // Check if using Manual Token
+    if (!cloudManualTokenInput.classList.contains('hidden')) {
+        const token = cloudManualTokenInput.value.trim();
+        if (!token) {
+            alert('Please enter an Access Token');
+            return;
+        }
+        cloudAccessToken = token;
+        localStorage.setItem('cloud_access_token', token);
+        updateCloudUI();
+        setCloudStatus('Token saved manually!', 'success');
+        // Reset UI state
+        cloudManualTokenInput.classList.add('hidden');
+        toggleManualTokenBtn.textContent = 'Or enter Access Token manually';
+        return;
+    }
+
+    const key = cloudAppKeyInput.value.trim();
+    if (!key) {
+        alert('Please enter a Dropbox App Key');
+        return;
+    }
+    localStorage.setItem('cloud_app_key', key);
+    cloudAppKey = key;
+
+    // Redirect to Dropbox Auth
+    const redirectUri = window.location.href.split('#')[0].split('?')[0];
+    const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${key}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    window.location.href = authUrl;
+});
+
+cloudSyncBtn.addEventListener('click', async () => {
+    if (!cloudAccessToken) return;
+
+    // Save path preference
+    const path = cloudFolderPathInput.value.trim();
+    localStorage.setItem('cloud_folder_path', path);
+    cloudFolderPath = path;
+
+    try {
+        setCloudStatus('Checking files...', 'loading');
+        cloudSyncBtn.disabled = true;
+        await syncDropboxFiles();
+        cloudSyncBtn.disabled = false;
+        setCloudStatus('Sync complete!', 'success');
+        setTimeout(() => setCloudStatus(''), 5000);
+    } catch (e) {
+        console.error('Sync error:', e);
+        setCloudStatus('Sync failed: ' + (e.message || e), 'error');
+        cloudSyncBtn.disabled = false;
+        if (e.status === 401) {
+            cloudAccessToken = null;
+            localStorage.removeItem('cloud_access_token');
+            updateCloudUI();
+        }
+    }
+});
+
+function updateCloudUI() {
+    if (cloudAccessToken) {
+        cloudConnectBtn.textContent = 'Connected';
+        cloudConnectBtn.classList.remove('primary');
+        cloudConnectBtn.disabled = true;
+        cloudAppKeyInput.disabled = true;
+        cloudSyncBtn.disabled = false;
+    } else {
+        cloudConnectBtn.textContent = 'Connect';
+        cloudConnectBtn.disabled = false;
+        cloudAppKeyInput.disabled = false;
+        cloudSyncBtn.disabled = true;
+    }
+}
+
+function setCloudStatus(msg, type = 'info') {
+    cloudStatusMsg.textContent = msg;
+    cloudStatusMsg.style.color = type === 'error' ? '#ff4444' : (type === 'success' ? '#00C851' : '#aaa');
+}
+
+// Handle Auth Callback
+function checkAuthCallback() {
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token=')) {
+        const params = new URLSearchParams(hash.substring(1));
+        const token = params.get('access_token');
+        if (token) {
+            cloudAccessToken = token;
+            localStorage.setItem('cloud_access_token', token);
+            window.location.hash = '';
+            updateCloudUI();
+            setCloudStatus('Connected to Dropbox!', 'success');
+        }
+    }
+}
+
+// Run on load
+checkAuthCallback();
+
+// Dropbox API Helpers
+async function syncDropboxFiles() {
+    const FILES_LIST_URL = 'https://api.dropboxapi.com/2/files/list_folder';
+    const DOWNLOAD_URL = 'https://content.dropboxapi.com/2/files/download';
+
+    let hasMore = true;
+    let cursor = null;
+    let remoteFiles = [];
+
+    // Normalize path: "/" -> ""
+    let dropboxPath = cloudFolderPath;
+    if (dropboxPath === '/') dropboxPath = '';
+    // Ensure no trailing slash if not empty
+    if (dropboxPath.length > 1 && dropboxPath.endsWith('/')) {
+        dropboxPath = dropboxPath.slice(0, -1);
+    }
+
+    // Step 1: List all files
+    setCloudStatus(`Listing files in ${dropboxPath || 'root'}...`);
+    while (hasMore) {
+        const headers = {
+            'Authorization': `Bearer ${cloudAccessToken}`,
+            'Content-Type': 'application/json'
+        };
+        const body = {
+            path: dropboxPath,
+            recursive: false,
+            include_media_info: false
+        };
+        if (cursor) body.cursor = cursor;
+
+        const response = await fetch(cursor ? `${FILES_LIST_URL}/continue` : FILES_LIST_URL, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(cursor ? { cursor } : body)
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error_summary || 'Failed to list files');
+        }
+
+        const data = await response.json();
+        const entries = data.entries.filter(e => e['.tag'] === 'file' && isMusicFile(e.name));
+        remoteFiles = remoteFiles.concat(entries);
+
+        hasMore = data.has_more;
+        cursor = data.cursor;
+    }
+
+    if (remoteFiles.length === 0) {
+        setCloudStatus('No music files found in this folder.');
+        return;
+    }
+
+    // Step 2: Compare with local IDB
+    const existingSongNames = new Set(songs.map(s => s.name));
+    const newFiles = remoteFiles.filter(f => !existingSongNames.has(f.name));
+
+    if (newFiles.length === 0) {
+        setCloudStatus('All files are up to date.', 'success');
+        return;
+    }
+
+    // Step 3: Download new files
+    let downloadedCount = 0;
+    for (const file of newFiles) {
+        setCloudStatus(`Downloading ${file.name} (${downloadedCount + 1}/${newFiles.length})...`);
+
+        const dlResponse = await fetch(DOWNLOAD_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${cloudAccessToken}`,
+                'Dropbox-API-Arg': JSON.stringify({ path: file.path_lower })
+            }
+        });
+
+        if (!dlResponse.ok) {
+            console.error(`Failed to download ${file.name}`);
+            continue;
+        }
+
+        const blob = await dlResponse.blob();
+        const fileObj = new File([blob], file.name, { type: blob.type || 'audio/mpeg' });
+
+        // Save using current logic
+        await saveSong(fileObj);
+        downloadedCount++;
+    }
+
+    // Refresh list
+    loadSongs();
+}
+
+function isMusicFile(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    return ['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext);
+}
