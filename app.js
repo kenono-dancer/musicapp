@@ -24,6 +24,8 @@ const resetSpeedBtn = document.getElementById('reset-speed-btn');
 const pitchToggle = document.getElementById('pitch-toggle');
 const loadingOverlay = document.getElementById('loading-overlay');
 const playbackModeBtn = document.getElementById('playback-mode-toggle');
+const settingsView = document.getElementById('settings-view');
+const closeSettingsBtn = document.getElementById('close-settings-btn');
 
 // State
 let db;
@@ -428,6 +430,15 @@ expandControlsBtn.addEventListener('click', () => {
 
 closeModalBtn.addEventListener('click', () => {
     playerModal.classList.add('hidden');
+});
+
+// Settings Modal
+window.openSettings = function () {
+    settingsView.classList.remove('hidden');
+};
+
+closeSettingsBtn.addEventListener('click', () => {
+    settingsView.classList.add('hidden');
 });
 
 speedSlider.addEventListener('input', updateSpeed);
