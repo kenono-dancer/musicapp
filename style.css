@@ -181,7 +181,8 @@ main {
     width: 100%;
     appearance: none;
     -webkit-appearance: none;
-    height: 24px;
+    height: 60px;
+    /* Extra Large Touch Target */
     /* Larger hit area */
     background: transparent;
     /* Container is transparent */
