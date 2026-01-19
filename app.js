@@ -443,10 +443,20 @@ function stopFastForward() {
         // Restore speed
         const speed = parseFloat(speedSlider.value);
         audio.playbackRate = speed;
-        // Prevent next 'click' from firing seek
+        // Prevent next 'click' from firing seek (if any)
         setTimeout(() => { isLongPressing = false; }, 50);
+        return true; // Was long press
     } else {
         isLongPressing = false;
+        return false; // Was short press
+    }
+}
+
+function handleFwdTouchEnd(e) {
+    if (e) e.preventDefault(); // Prevent ghost click
+    const wasLongPress = stopFastForward();
+    if (!wasLongPress) {
+        playNext();
     }
 }
 
@@ -465,27 +475,45 @@ function stopRewind() {
     if (rewindInterval) {
         // prevent click
         setTimeout(() => { isLongPressing = false; }, 50);
+        return true; // Was long press
     } else {
         isLongPressing = false;
+        return false; // Was short press
     }
     rewindInterval = null;
+}
+
+function handleBackTouchEnd(e) {
+    if (e) e.preventDefault();
+    const wasLongPress = stopRewind();
+    if (!wasLongPress) {
+        // Smart Back Logic for Tap
+        const now = Date.now();
+        if (audio.currentTime > 3 && (now - lastBackPressTime > 1000)) {
+            audio.currentTime = 0;
+        } else {
+            playPrev();
+        }
+        lastBackPressTime = now;
+    }
 }
 
 // Attach Long Press Events
 // Mobile needs touchstart/touchend, Desktop mousedown/mouseup
 
 // Forward
+// Forward
 skipFwdBtn.addEventListener('mousedown', startFastForward);
-skipFwdBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startFastForward(); }); // PreventDefault to stop mouse emulation
+skipFwdBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startFastForward(); });
 skipFwdBtn.addEventListener('mouseup', stopFastForward);
-skipFwdBtn.addEventListener('touchend', stopFastForward);
+skipFwdBtn.addEventListener('touchend', handleFwdTouchEnd); // Specific handler for touch
 skipFwdBtn.addEventListener('mouseleave', stopFastForward);
 
 // Back
 skipBackBtn.addEventListener('mousedown', startRewind);
 skipBackBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRewind(); });
 skipBackBtn.addEventListener('mouseup', stopRewind);
-skipBackBtn.addEventListener('touchend', stopRewind);
+skipBackBtn.addEventListener('touchend', handleBackTouchEnd); // Specific handler for touch
 skipBackBtn.addEventListener('mouseleave', stopRewind);
 
 audio.addEventListener('play', () => updatePlayPauseUI(true));
