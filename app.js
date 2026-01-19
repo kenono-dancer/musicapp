@@ -577,9 +577,42 @@ document.getElementById('library-view').addEventListener('touchmove', function (
 document.querySelector('.modal-content').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 
 // Fix sliders on mobile - Explicit isolation
-seekSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+// Custom Seek Logic for Mobile (Tap/Drag Anywhere)
+function handleSeekTouch(e) {
+    if (!audio.duration) return;
+
+    // Prevent default to stop scrolling/native behavior
+    e.preventDefault();
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const rect = seekSlider.getBoundingClientRect();
+    let x = touch.clientX - rect.left;
+
+    // Clamp
+    if (x < 0) x = 0;
+    if (x > rect.width) x = rect.width;
+
+    const percent = (x / rect.width) * 100;
+
+    // Update State
+    isDraggingSeek = true;
+    seekSlider.value = percent;
+
+    const time = (percent / 100) * audio.duration;
+    audio.currentTime = time;
+    currentTimeEl.textContent = formatTime(time);
+}
+
+seekSlider.addEventListener('touchstart', handleSeekTouch, { passive: false });
+seekSlider.addEventListener('touchmove', handleSeekTouch, { passive: false });
+seekSlider.addEventListener('touchend', () => {
+    isDraggingSeek = false;
+    // Ensure final position is set logic if needed, but touchmove handles it live
+}, { passive: false });
+
+// Speed Slider just needs stopProp
 speedSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
-seekSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
 speedSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
 
 // Skip Time
