@@ -402,6 +402,7 @@ playPauseBtn.addEventListener('click', togglePlayPause);
 playPauseBtn.addEventListener('click', togglePlayPause);
 
 // Smart Back Button
+// Smart Back Button -> Now Strict Restart
 skipBackBtn.addEventListener('click', (e) => {
     // If we just finished a long press, ignore the click (mouseup triggers click)
     if (isLongPressing) {
@@ -409,15 +410,8 @@ skipBackBtn.addEventListener('click', (e) => {
         return;
     }
 
-    const now = Date.now();
-    if (now - lastBackPressTime > 1000) {
-        // If not double tapped, restart
-        audio.currentTime = 0;
-    } else {
-        // Double tap -> Prev
-        playPrev();
-    }
-    lastBackPressTime = now;
+    // Always restart current song
+    audio.currentTime = 0;
 });
 
 // Skip Forward Button (Standard Click)
@@ -487,14 +481,8 @@ function handleBackTouchEnd(e) {
     if (e) e.preventDefault();
     const wasLongPress = stopRewind();
     if (!wasLongPress) {
-        // Smart Back Logic for Tap
-        const now = Date.now();
-        if (now - lastBackPressTime > 1000) {
-            audio.currentTime = 0;
-        } else {
-            playPrev();
-        }
-        lastBackPressTime = now;
+        // Always restart
+        audio.currentTime = 0;
     }
 }
 
