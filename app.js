@@ -410,11 +410,11 @@ skipBackBtn.addEventListener('click', (e) => {
     }
 
     const now = Date.now();
-    if (audio.currentTime > 3 && (now - lastBackPressTime > 1000)) {
-        // If playing > 3s and not double tapped, restart
+    if (now - lastBackPressTime > 1000) {
+        // If not double tapped, restart
         audio.currentTime = 0;
     } else {
-        // Double tap or beginning of song -> Prev
+        // Double tap -> Prev
         playPrev();
     }
     lastBackPressTime = now;
@@ -489,7 +489,7 @@ function handleBackTouchEnd(e) {
     if (!wasLongPress) {
         // Smart Back Logic for Tap
         const now = Date.now();
-        if (audio.currentTime > 3 && (now - lastBackPressTime > 1000)) {
+        if (now - lastBackPressTime > 1000) {
             audio.currentTime = 0;
         } else {
             playPrev();
