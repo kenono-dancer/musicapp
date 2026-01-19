@@ -451,12 +451,18 @@ playbackModeBtn.addEventListener('click', togglePlaybackMode);
 
 // Mobile: Prevent Pull-to-Refresh
 document.body.addEventListener('touchmove', function (e) {
-    // Allow range sliders to work
+    // Allow range sliders to work - Fallback check
     if (e.target.closest('input[type="range"]')) return;
     e.preventDefault();
 }, { passive: false });
 document.getElementById('library-view').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 document.querySelector('.modal-content').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+
+// Fix sliders on mobile - Explicit isolation
+seekSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+speedSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+seekSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+speedSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
 
 // Skip Time
 window.skipTime = function (seconds) {
