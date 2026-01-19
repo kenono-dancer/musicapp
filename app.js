@@ -415,12 +415,11 @@ seekSlider.addEventListener('input', () => {
     isDraggingSeek = true;
     const time = (seekSlider.value / 100) * audio.duration;
     currentTimeEl.textContent = formatTime(time);
+    audio.currentTime = time; // Enable scrubbing
 });
 
 seekSlider.addEventListener('change', () => {
     isDraggingSeek = false;
-    const time = (seekSlider.value / 100) * audio.duration;
-    audio.currentTime = time;
 });
 
 // Modal & Settings
@@ -451,7 +450,11 @@ pitchToggle.addEventListener('change', updatePitchPreservation);
 playbackModeBtn.addEventListener('click', togglePlaybackMode);
 
 // Mobile: Prevent Pull-to-Refresh
-document.body.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+document.body.addEventListener('touchmove', function (e) {
+    // Allow range sliders to work
+    if (e.target.closest('input[type="range"]')) return;
+    e.preventDefault();
+}, { passive: false });
 document.getElementById('library-view').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 document.querySelector('.modal-content').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 
@@ -463,15 +466,22 @@ window.skipTime = function (seconds) {
 };
 
 // Force Update
-window.forceUpdate = function () {
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (registrations) {
-            for (let registration of registrations) {
-                registration.unregister();
+// Force Update
+window.forceUpdate = async function () {
+    try {
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+                await registration.unregister();
             }
-            window.location.reload(true);
-        });
-    } else {
+        }
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(key => caches.delete(key)));
+        }
+    } catch (error) {
+        console.error('Update cleanup failed:', error);
+    } finally {
         window.location.reload(true);
     }
 };
