@@ -34,6 +34,10 @@ let songs = [];
 let currentSongIndex = -1;
 let isDraggingSeek = false;
 let playbackMode = 'all'; // 'all' (Loop All), 'one' (Loop One), 'single' (Stop)
+let lastBackPressTime = 0;
+let longPressTimer = null;
+let rewindInterval = null;
+let isLongPressing = false;
 
 // Format Time
 function formatTime(seconds) {
@@ -395,8 +399,94 @@ fileInput.addEventListener('change', async (e) => {
 });
 
 playPauseBtn.addEventListener('click', togglePlayPause);
-skipFwdBtn.addEventListener('click', playNext);
-skipBackBtn.addEventListener('click', playPrev);
+playPauseBtn.addEventListener('click', togglePlayPause);
+
+// Smart Back Button
+skipBackBtn.addEventListener('click', (e) => {
+    // If we just finished a long press, ignore the click (mouseup triggers click)
+    if (isLongPressing) {
+        isLongPressing = false;
+        return;
+    }
+
+    const now = Date.now();
+    if (audio.currentTime > 3 && (now - lastBackPressTime > 1000)) {
+        // If playing > 3s and not double tapped, restart
+        audio.currentTime = 0;
+    } else {
+        // Double tap or beginning of song -> Prev
+        playPrev();
+    }
+    lastBackPressTime = now;
+});
+
+// Skip Forward Button (Standard Click)
+skipFwdBtn.addEventListener('click', (e) => {
+    if (isLongPressing) {
+        isLongPressing = false;
+        return;
+    }
+    playNext();
+});
+
+// Long Press Logic
+function startFastForward() {
+    isLongPressing = true;
+    longPressTimer = setTimeout(() => {
+        audio.playbackRate = 2.0;
+    }, 500); // Wait 500ms to consider it a hold
+}
+
+function stopFastForward() {
+    clearTimeout(longPressTimer);
+    if (audio.playbackRate === 2.0) {
+        // Restore speed
+        const speed = parseFloat(speedSlider.value);
+        audio.playbackRate = speed;
+        // Prevent next 'click' from firing seek
+        setTimeout(() => { isLongPressing = false; }, 50);
+    } else {
+        isLongPressing = false;
+    }
+}
+
+function startRewind() {
+    isLongPressing = true;
+    longPressTimer = setTimeout(() => {
+        rewindInterval = setInterval(() => {
+            audio.currentTime = Math.max(0, audio.currentTime - 0.2); // 0.2s back every 50ms = 4x speed approx
+        }, 50);
+    }, 500);
+}
+
+function stopRewind() {
+    clearTimeout(longPressTimer);
+    clearInterval(rewindInterval);
+    if (rewindInterval) {
+        // prevent click
+        setTimeout(() => { isLongPressing = false; }, 50);
+    } else {
+        isLongPressing = false;
+    }
+    rewindInterval = null;
+}
+
+// Attach Long Press Events
+// Mobile needs touchstart/touchend, Desktop mousedown/mouseup
+
+// Forward
+skipFwdBtn.addEventListener('mousedown', startFastForward);
+skipFwdBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startFastForward(); }); // PreventDefault to stop mouse emulation
+skipFwdBtn.addEventListener('mouseup', stopFastForward);
+skipFwdBtn.addEventListener('touchend', stopFastForward);
+skipFwdBtn.addEventListener('mouseleave', stopFastForward);
+
+// Back
+skipBackBtn.addEventListener('mousedown', startRewind);
+skipBackBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRewind(); });
+skipBackBtn.addEventListener('mouseup', stopRewind);
+skipBackBtn.addEventListener('touchend', stopRewind);
+skipBackBtn.addEventListener('mouseleave', stopRewind);
 
 audio.addEventListener('play', () => updatePlayPauseUI(true));
 audio.addEventListener('pause', () => updatePlayPauseUI(false));
