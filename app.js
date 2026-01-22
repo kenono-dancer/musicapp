@@ -739,9 +739,12 @@ cloudSyncBtn.addEventListener('click', async () => {
 
         // Clear token on auth/permission errors to allow reconnection
         const errStr = (e.message || '').toString();
-        if (e.status === 401 || errStr.includes('missing_scope') || errStr.includes('access_denied')) {
-            // Keep token for a moment to let user see error, but allow disconnect
-            // alert('Permission error detected. Please Disconnect and verify Permissions/Token.');
+        // Check for 401, expired_access_token, or other auth failures
+        if (e.status === 401 || errStr.includes('expired_access_token') || errStr.includes('invalid_access_token')) {
+            alert('Dropbox session expired or invalid. Please Connect again.');
+            cloudAccessToken = null;
+            localStorage.removeItem('cloud_access_token');
+            updateCloudUI();
         }
     }
 });
