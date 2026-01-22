@@ -83,7 +83,8 @@ header h1 {
 main {
     flex: 1;
     overflow-y: auto;
-    padding-bottom: 260px;
+    padding-bottom: 220px;
+    /* Ensure content clears docked player bar */
     /* Space for player bar + footer */
     display: flex;
     flex-direction: column;
@@ -139,21 +140,40 @@ main {
 /* Player Bar */
 .player-bar {
     position: absolute;
-    bottom: 100px;
-    left: 16px;
-    right: 16px;
+    bottom: 0;
+    left: 0;
+    right: 0;
     background: var(--glass-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border-radius: 20px;
+    border-radius: 20px 20px 0 0;
     padding: 16px 20px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+    /* Adaptive */
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--glass-border);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+    /* Shadow upwards */
+    border-top: 1px solid var(--glass-border);
     transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
     z-index: 100;
+}
+
+/* ... existing code ... */
+
+/* Footer inside Main */
+.version-info-footer {
+    width: 100%;
+    padding: 24px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    /* Removed absolute positioning */
 }
 
 .player-info {
@@ -588,25 +608,7 @@ input:checked+.slider:before {
     }
 }
 
-/* Modal Footer Version */
-.version-info-footer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    padding-top: 12px;
-    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    opacity: 0.6;
-    z-index: 90;
-    /* Below player bar (100) */
-    background: linear-gradient(to top, rgba(18, 18, 18, 1), rgba(18, 18, 18, 0));
-}
+
 
 .version-info-footer span,
 .version-info-footer a {
