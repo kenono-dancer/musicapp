@@ -345,6 +345,10 @@ main {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
+    flex-wrap: wrap;
+    /* Allow wrapping on small screens */
+    gap: 8px;
+    /* Gap when wrapped */
 }
 
 .text-btn {
