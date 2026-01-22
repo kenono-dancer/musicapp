@@ -737,6 +737,12 @@ window.skipTime = function (seconds) {
 // Force Update
 // Force Update
 window.forceUpdate = async function () {
+    const btn = document.querySelector('button[onclick="forceUpdate()"]');
+    if (btn) {
+        btn.textContent = 'Updating...';
+        btn.disabled = true;
+    }
+
     try {
         if ('serviceWorker' in navigator) {
             const registrations = await navigator.serviceWorker.getRegistrations();
@@ -750,8 +756,12 @@ window.forceUpdate = async function () {
         }
     } catch (error) {
         console.error('Update cleanup failed:', error);
+        alert('Update cleanup failed: ' + error);
     } finally {
-        window.location.reload(true);
+        // Force browser to fetch a new copy by appending a timestamp
+        const url = new URL(window.location.href);
+        url.searchParams.set('t', Date.now());
+        window.location.href = url.toString();
     }
 };
 

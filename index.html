@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#121212">
     <title>Music Player</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css?v=2.51">
+    <link rel="stylesheet" href="style.css?v=2.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -181,7 +181,7 @@
                 </div>
 
                 <div class="version-info-footer">
-                    <span onclick="openSettings()">App Version: 2.51</span>
+                    <span onclick="openSettings()">App Version: 2.52</span>
                     <span class="footer-separator">•</span>
                     <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
                 </div>
@@ -305,7 +305,7 @@
                             </button>
                         </div>
                         <p style="font-size: 0.75em; color: #666; margin-top: 8px; text-align: center;">
-                            Ver: 2.51
+                            Ver: 2.52
                         </p>
                     </div>
                 </div>
@@ -320,7 +320,7 @@
             };
 
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js?v=2.51')
+                navigator.serviceWorker.register('sw.js?v=2.52')
                     .then(reg => console.log('SW registered', reg))
                     .catch(err => console.error('SW registration failed', err));
             }
