@@ -26,6 +26,9 @@ const loadingOverlay = document.getElementById('loading-overlay');
 const playbackModeBtn = document.getElementById('playback-mode-toggle');
 const settingsView = document.getElementById('settings-view');
 const closeSettingsBtn = document.getElementById('close-settings-btn');
+const modalPlayPauseBtn = document.getElementById('modal-play-pause-btn');
+const modalPlayIcon = document.getElementById('modal-play-icon');
+const modalPauseIcon = document.getElementById('modal-pause-icon');
 
 // Defined globally in index.html for robustness, but also here for reference if needed
 // window.openSettings = ...
@@ -119,7 +122,9 @@ function saveSong(file) {
             name: file.name,
             blob: file,
             dateAdded: new Date(),
-            order: songs.length // Append to end
+            order: songs.length, // Append to end
+            speed: 1.0, // Default speed
+            preservePitch: true // Default pitch
         };
         const req = store.add(song);
         req.onsuccess = () => resolve();
@@ -199,7 +204,10 @@ function renderSongList() {
 
             li.innerHTML = `
                 <div class="song-item-info">
-                    <div class="song-name">${song.name}</div>
+                    <div class="song-name">
+                        ${song.name}
+                        ${(song.speed && song.speed !== 1.0) ? `<span class="speed-badge">${song.speed.toFixed(2)}x</span>` : ''}
+                    </div>
                 </div>
                 <div class="song-actions">
                     <button class="reorder-btn" onclick="moveSong(${index}, -1, event)" ${isFirst ? 'disabled' : ''}>
@@ -243,8 +251,24 @@ function playSong(index) {
     modalSongTitle.textContent = song.name;
 
     // Apply current settings
-    updateSpeed();
-    updatePitchPreservation();
+    // Apply current settings
+    // Load per-song settings or default
+    const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
+    const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
+
+    // Apply to Audio
+    audio.playbackRate = savedSpeed;
+    if (audio.preservesPitch !== undefined) audio.preservesPitch = savedPitch;
+    else if (audio.mozPreservesPitch !== undefined) audio.mozPreservesPitch = savedPitch;
+    else if (audio.webkitPreservesPitch !== undefined) audio.webkitPreservesPitch = savedPitch;
+
+    // Update UI controls to match
+    speedSlider.value = savedSpeed;
+    speedValue.textContent = savedSpeed.toFixed(2);
+    pitchToggle.checked = savedPitch;
+
+    updateSpeed(false); // Update UI text only, speed already set
+    updatePitchPreservation(false); // Update UI/Audio property
 
     renderSongList(); // Retrieve active state
 
@@ -280,6 +304,15 @@ function updatePlayPauseUI(isPlaying) {
         playIcon.classList.remove('hidden');
         pauseIcon.classList.add('hidden');
     }
+
+    // Sync Modal Buttons
+    if (isPlaying) {
+        modalPlayIcon.classList.add('hidden');
+        modalPauseIcon.classList.remove('hidden');
+    } else {
+        modalPlayIcon.classList.remove('hidden');
+        modalPauseIcon.classList.add('hidden');
+    }
 }
 
 function handleSongEnd() {
@@ -308,13 +341,30 @@ function playPrev() {
     playSong(prevIndex);
 }
 
-function updateSpeed() {
+function updateSpeed(saveToDB = true) {
     const speed = parseFloat(speedSlider.value);
     audio.playbackRate = speed;
     speedValue.textContent = speed.toFixed(2);
+
+    if (saveToDB && currentSongIndex !== -1) {
+        const song = songs[currentSongIndex];
+        song.speed = speed;
+
+        // Save to DB
+        const transaction = db.transaction(['songs'], 'readwrite');
+        const store = transaction.objectStore('songs');
+        store.put(song);
+
+        // Update list badge logic immediately (optional, or wait for render)
+        // renderSongList(); // Might be heavy to re-render whole list on slider drag. 
+        // Better: update visible badge only? 
+        // For now, let's re-render on 'change' (drag end) instead of input?
+        // Or just re-render. List is small.
+        renderSongList();
+    }
 }
 
-function updatePitchPreservation() {
+function updatePitchPreservation(saveToDB = true) {
     const preserve = pitchToggle.checked;
 
     if (audio.preservesPitch !== undefined) {
@@ -323,6 +373,15 @@ function updatePitchPreservation() {
         audio.mozPreservesPitch = preserve;
     } else if (audio.webkitPreservesPitch !== undefined) {
         audio.webkitPreservesPitch = preserve;
+    }
+
+    if (saveToDB && currentSongIndex !== -1) {
+        const song = songs[currentSongIndex];
+        song.preservePitch = preserve;
+
+        const transaction = db.transaction(['songs'], 'readwrite');
+        const store = transaction.objectStore('songs');
+        store.put(song);
     }
 }
 
@@ -417,7 +476,7 @@ fileInput.addEventListener('change', async (e) => {
 });
 
 playPauseBtn.addEventListener('click', togglePlayPause);
-playPauseBtn.addEventListener('click', togglePlayPause);
+modalPlayPauseBtn.addEventListener('click', togglePlayPause);
 
 // Smart Back Button
 // Smart Back Button -> Now Strict Restart
@@ -566,13 +625,13 @@ closeSettingsBtn.addEventListener('click', () => {
     settingsView.classList.add('hidden');
 });
 
-speedSlider.addEventListener('input', updateSpeed);
+speedSlider.addEventListener('input', () => updateSpeed(true));
 resetSpeedBtn.addEventListener('click', () => {
     speedSlider.value = 1.0;
     updateSpeed();
 });
 
-pitchToggle.addEventListener('change', updatePitchPreservation);
+pitchToggle.addEventListener('change', () => updatePitchPreservation(true));
 playbackModeBtn.addEventListener('click', togglePlaybackMode);
 
 // Mobile: Prevent Pull-to-Refresh

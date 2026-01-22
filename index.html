@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#121212">
     <title>Music Player</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css?v=2.48">
+    <link rel="stylesheet" href="style.css?v=2.49">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -140,7 +140,18 @@
                         <circle cx="18" cy="16" r="3" />
                     </svg>
                 </div>
+
                 <h3 id="modal-song-title">Song Title</h3>
+
+                <button id="modal-play-pause-btn" class="control-btn lg" style="margin-bottom: 20px;">
+                    <svg id="modal-play-icon" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                    </svg>
+                    <svg id="modal-pause-icon" class="hidden" width="32" height="32" viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                    </svg>
+                </button>
 
                 <div class="speed-control-section">
                     <div class="control-row">
@@ -170,7 +181,7 @@
                 </div>
 
                 <div class="version-info-footer">
-                    <span onclick="openSettings()">App Version: 2.48</span>
+                    <span onclick="openSettings()">App Version: 2.49</span>
                     <span class="footer-separator">•</span>
                     <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
                 </div>
@@ -294,7 +305,7 @@
                             </button>
                         </div>
                         <p style="font-size: 0.75em; color: #666; margin-top: 8px; text-align: center;">
-                            Ver: 2.48
+                            Ver: 2.49
                         </p>
                     </div>
                 </div>
@@ -309,7 +320,7 @@
             };
 
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js?v=2.48')
+                navigator.serviceWorker.register('sw.js?v=2.49')
                     .then(reg => console.log('SW registered', reg))
                     .catch(err => console.error('SW registration failed', err));
             }
