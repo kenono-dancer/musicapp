@@ -638,7 +638,7 @@ const cloudConnectBtn = document.getElementById('cloud-connect-btn');
 const cloudSyncBtn = document.getElementById('cloud-sync-btn');
 const cloudStatusMsg = document.getElementById('cloud-status-msg');
 
-const DROPBOX_CLIENT_ID = ''; // TODO: Enter your Dropbox App Key here
+const DROPBOX_CLIENT_ID = 'nagv63g1i31287s';
 
 let cloudAccessToken = localStorage.getItem('cloud_access_token');
 let cloudFolderPath = localStorage.getItem('cloud_folder_path') || '/';
