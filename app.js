@@ -634,36 +634,42 @@ window.forceUpdate = async function () {
 // Cloud Sync (Dropbox) Logic
 const cloudServiceSelect = document.getElementById('cloud-service-select');
 const cloudFolderPathInput = document.getElementById('cloud-folder-path');
-const cloudAppKeyInput = document.getElementById('cloud-app-key');
 const cloudConnectBtn = document.getElementById('cloud-connect-btn');
 const cloudSyncBtn = document.getElementById('cloud-sync-btn');
 const cloudStatusMsg = document.getElementById('cloud-status-msg');
 
-// Manual Token Elements
-const toggleManualTokenBtn = document.getElementById('toggle-manual-token-btn');
-const cloudManualTokenInput = document.getElementById('cloud-manual-token');
+const DROPBOX_CLIENT_ID = ''; // TODO: Enter your Dropbox App Key here
 
 let cloudAccessToken = localStorage.getItem('cloud_access_token');
-let cloudAppKey = localStorage.getItem('cloud_app_key');
 let cloudFolderPath = localStorage.getItem('cloud_folder_path') || '/';
 
 // Restore inputs
-if (cloudAppKey) cloudAppKeyInput.value = cloudAppKey;
 if (cloudFolderPath) cloudFolderPathInput.value = cloudFolderPath;
 updateCloudUI();
 
-// Event Listeners
-toggleManualTokenBtn.addEventListener('click', () => {
-    cloudManualTokenInput.classList.toggle('hidden');
-    if (cloudManualTokenInput.classList.contains('hidden')) {
-        toggleManualTokenBtn.textContent = 'Or enter Access Token manually';
-        cloudAppKeyInput.disabled = false;
-        if (!cloudAccessToken) cloudConnectBtn.textContent = 'Connect';
-    } else {
-        toggleManualTokenBtn.textContent = 'Use App Key';
-        cloudAppKeyInput.disabled = true;
-        cloudConnectBtn.textContent = 'Save Token';
+// Simplified Connect Listener
+cloudConnectBtn.addEventListener('click', () => {
+    // DISCONNECT ACTION
+    if (cloudAccessToken) {
+        if (!confirm('Disconnect from Dropbox?')) return;
+        cloudAccessToken = null;
+        localStorage.removeItem('cloud_access_token');
+        updateCloudUI();
+        setCloudStatus('Disconnected.', 'info');
+        return;
     }
+
+    // CONNECT ACTION
+    const key = DROPBOX_CLIENT_ID;
+    if (!key) {
+        alert('Dropbox App Key is missing. Please add your Key to "DROPBOX_CLIENT_ID" in app.js');
+        return;
+    }
+
+    // Redirect to Dropbox Auth
+    const redirectUri = window.location.href.split('#')[0].split('?')[0];
+    const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${key}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=files.metadata.read files.content.read`;
+    window.location.href = authUrl;
 });
 
 cloudConnectBtn.addEventListener('click', () => {
@@ -745,24 +751,14 @@ function updateCloudUI() {
         cloudConnectBtn.textContent = 'Disconnect';
         cloudConnectBtn.classList.remove('primary');
         cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
-        cloudConnectBtn.disabled = false; // Enable click to disconnect
-
-        cloudAppKeyInput.disabled = true;
+        cloudConnectBtn.disabled = false;
         cloudSyncBtn.disabled = false;
-        toggleManualTokenBtn.classList.add('hidden'); // Hide manual toggle when connected
     } else {
-        cloudConnectBtn.textContent = 'Connect';
+        cloudConnectBtn.textContent = 'Connect Dropbox';
         cloudConnectBtn.classList.remove('primary');
         cloudConnectBtn.style.background = '#0061FE'; // Dropbox Blue
-
         cloudConnectBtn.disabled = false;
-        cloudAppKeyInput.disabled = false;
         cloudSyncBtn.disabled = true;
-
-        toggleManualTokenBtn.classList.remove('hidden');
-        if (!cloudManualTokenInput.classList.contains('hidden')) { // Corrected condition
-            cloudConnectBtn.textContent = 'Save Token';
-        }
     }
 }
 

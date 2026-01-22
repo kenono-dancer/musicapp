@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#121212">
     <title>Music Player</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css?v=2.29">
+    <link rel="stylesheet" href="style.css?v=2.30">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -106,7 +106,7 @@
         </div>
 
         <div class="version-info-footer">
-            <span onclick="openSettings()">App Version: 2.29</span>
+            <span onclick="openSettings()">App Version: 2.30</span>
             <span class="footer-separator">•</span>
             <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
         </div>
@@ -166,7 +166,7 @@
                 </div>
 
                 <div class="version-info-footer">
-                    <span onclick="openSettings()">App Version: 2.29</span>
+                    <span onclick="openSettings()">App Version: 2.30</span>
                     <span class="footer-separator">•</span>
                     <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
                 </div>
@@ -260,16 +260,7 @@
                         <p style="font-size: 0.75em; color: #888;">Leave as / for root</p>
                     </div>
                     <div class="control-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                        <label for="cloud-app-key" style="font-size: 0.9em; color: #aaa;">App Key (Client ID)</label>
-                        <input type="text" id="cloud-app-key" placeholder="Enter Dropbox App Key"
-                            style="width: 100%; background: #333; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px;">
-                        <div style="width: 100%; text-align: right;">
-                            <button id="toggle-manual-token-btn" class="text-btn"
-                                style="font-size: 0.75em; color: #0061FE;">Or enter Access Token manually</button>
-                        </div>
-                        <input type="text" id="cloud-manual-token" placeholder="Paste long Access Token here"
-                            class="hidden"
-                            style="width: 100%; background: #333; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px; margin-top: 4px;">
+                        <!-- App Key is now hardcoded in app.js for simplicity -->
                     </div>
                     <div style="margin-top: 16px; display: flex; gap: 10px;">
                         <button id="cloud-connect-btn" class="control-btn sm"
@@ -292,7 +283,7 @@
                         </button>
                     </div>
                     <p style="font-size: 0.75em; color: #666; margin-top: 8px; text-align: center;">
-                        Ver: 2.29
+                        Ver: 2.30
                     </p>
                 </div>
             </div>
@@ -301,7 +292,7 @@
     <script src="app.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=2.29')
+            navigator.serviceWorker.register('sw.js?v=2.30')
                 .then(reg => console.log('SW registered', reg))
                 .catch(err => console.error('SW registration failed', err));
         }
