@@ -140,7 +140,8 @@ main {
 /* Player Bar */
 .player-bar {
     position: absolute;
-    bottom: 0;
+    bottom: calc(50px + env(safe-area-inset-bottom));
+    /* Sit above footer */
     left: 0;
     right: 0;
     background: var(--glass-bg);
@@ -162,18 +163,26 @@ main {
 
 /* ... existing code ... */
 
-/* Footer inside Main */
+/* Footer Fixed at Bottom */
 .version-info-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
     width: 100%;
-    padding: 24px 0;
+    height: calc(50px + env(safe-area-inset-bottom));
+    padding-top: 12px;
+    padding-bottom: env(safe-area-inset-bottom);
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     font-size: 0.7rem;
     color: var(--text-secondary);
-    opacity: 0.6;
-    /* Removed absolute positioning */
+    background: var(--bg-color);
+    /* Opaque background */
+    z-index: 101;
+    /* Above everything */
+    border-top: 1px solid var(--glass-border);
 }
 
 .player-info {
