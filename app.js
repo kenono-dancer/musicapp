@@ -27,6 +27,9 @@ const playbackModeBtn = document.getElementById('playback-mode-toggle');
 const settingsView = document.getElementById('settings-view');
 const closeSettingsBtn = document.getElementById('close-settings-btn');
 
+// Defined globally in index.html for robustness, but also here for reference if needed
+// window.openSettings = ...
+
 // State
 let db;
 let audio = new Audio();
@@ -538,9 +541,11 @@ closeModalBtn.addEventListener('click', () => {
 });
 
 // Settings Modal
-window.openSettings = function () {
-    settingsView.classList.remove('hidden');
-};
+// Settings Modal
+// NOTE: window.openSettings is now defined in index.html to ensure it works even if app.js crashes.
+// window.openSettings = function () {
+//     settingsView.classList.remove('hidden');
+// };
 
 closeSettingsBtn.addEventListener('click', () => {
     settingsView.classList.add('hidden');
@@ -776,45 +781,47 @@ cloudSyncBtn.addEventListener('click', async () => {
     }
 });
 
-// Update Instructions based on service
-if (cloudService === 'dropbox') {
-    serviceInstructionEl.textContent = 'Dropboxに接続して音楽ファイルを同期します。\n下の「Folder Path」に読み込みたいフォルダのパスを入力してください（例: /Music）。\n空白の場合はルートフォルダを検索します。';
-} else if (cloudService === 'gdrive') {
-    serviceInstructionEl.textContent = 'Googleドライブから音楽を同期します。\n認証時に警告が出る場合は「詳細→安全でないページへ移動」を選んでください。\n下の「Folder Path」には、ドライブ内の【フォルダ名】を正確に入力してください。';
-} else if (cloudService === 'ios-files') {
-    serviceInstructionEl.textContent = 'iPhone/iPadの「ファイル」アプリから音楽を手動で読み込みます。\n「Import Files」ボタンを押して、ファイルを選択してください。';
-}
 
-if (cloudService === 'ios-files') {
-    cloudConnectBtn.classList.add('hidden'); // No connect button needed
-    cloudSyncBtn.textContent = 'Import Files';
-    cloudSyncBtn.disabled = false;
-    cloudSyncBtn.style.background = '#007AFF'; // iOS Blue
-    return;
-} else {
-    cloudConnectBtn.classList.remove('hidden');
-    cloudSyncBtn.textContent = 'Sync';
-}
-
-if (cloudAccessToken) {
-    cloudConnectBtn.textContent = 'Disconnect';
-    cloudConnectBtn.classList.remove('primary');
-    cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
-    cloudConnectBtn.disabled = false;
-    cloudSyncBtn.disabled = false;
-    cloudSyncBtn.style.background = '#28a745';
-} else {
+function updateCloudUI() {
+    // Update Instructions based on service
     if (cloudService === 'dropbox') {
-        cloudConnectBtn.textContent = 'Connect Dropbox';
-        cloudConnectBtn.style.background = '#0061FE';
-    } else {
-        cloudConnectBtn.textContent = 'Connect Google';
-        cloudConnectBtn.style.background = '#4285F4';
+        serviceInstructionEl.textContent = 'Dropboxに接続して音楽ファイルを同期します。\n下の「Folder Path」に読み込みたいフォルダのパスを入力してください（例: /Music）。\n空白の場合はルートフォルダを検索します。';
+    } else if (cloudService === 'gdrive') {
+        serviceInstructionEl.textContent = 'Googleドライブから音楽を同期します。\n認証時に警告が出る場合は「詳細→安全でないページへ移動」を選んでください。\n下の「Folder Path」には、ドライブ内の【フォルダ名】を正確に入力してください。';
+    } else if (cloudService === 'ios-files') {
+        serviceInstructionEl.textContent = 'iPhone/iPadの「ファイル」アプリから音楽を手動で読み込みます。\n「Import Files」ボタンを押して、ファイルを選択してください。';
     }
-    cloudConnectBtn.classList.remove('primary');
-    cloudConnectBtn.disabled = false;
-    cloudSyncBtn.disabled = true;
-}
+
+    if (cloudService === 'ios-files') {
+        cloudConnectBtn.classList.add('hidden'); // No connect button needed
+        cloudSyncBtn.textContent = 'Import Files';
+        cloudSyncBtn.disabled = false;
+        cloudSyncBtn.style.background = '#007AFF'; // iOS Blue
+        return;
+    } else {
+        cloudConnectBtn.classList.remove('hidden');
+        cloudSyncBtn.textContent = 'Sync';
+    }
+
+    if (cloudAccessToken) {
+        cloudConnectBtn.textContent = 'Disconnect';
+        cloudConnectBtn.classList.remove('primary');
+        cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
+        cloudConnectBtn.disabled = false;
+        cloudSyncBtn.disabled = false;
+        cloudSyncBtn.style.background = '#28a745';
+    } else {
+        if (cloudService === 'dropbox') {
+            cloudConnectBtn.textContent = 'Connect Dropbox';
+            cloudConnectBtn.style.background = '#0061FE';
+        } else {
+            cloudConnectBtn.textContent = 'Connect Google';
+            cloudConnectBtn.style.background = '#4285F4';
+        }
+        cloudConnectBtn.classList.remove('primary');
+        cloudConnectBtn.disabled = false;
+        cloudSyncBtn.disabled = true;
+    }
 }
 
 function setCloudStatus(msg, type = 'info') {
