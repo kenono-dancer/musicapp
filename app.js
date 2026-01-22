@@ -668,6 +668,10 @@ cloudConnectBtn.addEventListener('click', () => {
 
     // Redirect to Dropbox Auth
     const redirectUri = window.location.href.split('#')[0].split('?')[0];
+
+    // DEBUG: Show user the exact URI to add to Dropbox
+    alert(`Please ensure this URI is added to Dropbox App Settings:\n\n${redirectUri}`);
+
     const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${key}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=files.metadata.read files.content.read`;
     window.location.href = authUrl;
 });
