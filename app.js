@@ -643,6 +643,7 @@ seekSlider.addEventListener('change', () => {
 // Modal & Settings
 expandControlsBtn.addEventListener('click', () => {
     playerModal.classList.remove('hidden');
+    generateSeekMarkers(); // Refresh markers in case they were missed
 });
 
 closeModalBtn.addEventListener('click', () => {
