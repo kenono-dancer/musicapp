@@ -637,6 +637,7 @@ const cloudFolderPathInput = document.getElementById('cloud-folder-path');
 const cloudConnectBtn = document.getElementById('cloud-connect-btn');
 const cloudSyncBtn = document.getElementById('cloud-sync-btn');
 const cloudStatusMsg = document.getElementById('cloud-status-msg');
+const serviceInstructionEl = document.getElementById('service-instruction');
 
 const DROPBOX_CLIENT_ID = 'nagv63g1i31287s';
 const GOOGLE_CLIENT_ID = '630507478394-0t48nkg5ni575t3p4u5ib74joa678640.apps.googleusercontent.com';
@@ -775,37 +776,45 @@ cloudSyncBtn.addEventListener('click', async () => {
     }
 });
 
-function updateCloudUI() {
-    if (cloudService === 'ios-files') {
-        cloudConnectBtn.classList.add('hidden'); // No connect button needed
-        cloudSyncBtn.textContent = 'Import Files';
-        cloudSyncBtn.disabled = false;
-        cloudSyncBtn.style.background = '#007AFF'; // iOS Blue
-        return;
-    } else {
-        cloudConnectBtn.classList.remove('hidden');
-        cloudSyncBtn.textContent = 'Sync';
-    }
+// Update Instructions based on service
+if (cloudService === 'dropbox') {
+    serviceInstructionEl.textContent = 'Dropboxに接続して音楽ファイルを同期します。\n下の「Folder Path」に読み込みたいフォルダのパスを入力してください（例: /Music）。\n空白の場合はルートフォルダを検索します。';
+} else if (cloudService === 'gdrive') {
+    serviceInstructionEl.textContent = 'Googleドライブから音楽を同期します。\n認証時に警告が出る場合は「詳細→安全でないページへ移動」を選んでください。\n下の「Folder Path」には、ドライブ内の【フォルダ名】を正確に入力してください。';
+} else if (cloudService === 'ios-files') {
+    serviceInstructionEl.textContent = 'iPhone/iPadの「ファイル」アプリから音楽を手動で読み込みます。\n「Import Files」ボタンを押して、ファイルを選択してください。';
+}
 
-    if (cloudAccessToken) {
-        cloudConnectBtn.textContent = 'Disconnect';
-        cloudConnectBtn.classList.remove('primary');
-        cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
-        cloudConnectBtn.disabled = false;
-        cloudSyncBtn.disabled = false;
-        cloudSyncBtn.style.background = '#28a745';
+if (cloudService === 'ios-files') {
+    cloudConnectBtn.classList.add('hidden'); // No connect button needed
+    cloudSyncBtn.textContent = 'Import Files';
+    cloudSyncBtn.disabled = false;
+    cloudSyncBtn.style.background = '#007AFF'; // iOS Blue
+    return;
+} else {
+    cloudConnectBtn.classList.remove('hidden');
+    cloudSyncBtn.textContent = 'Sync';
+}
+
+if (cloudAccessToken) {
+    cloudConnectBtn.textContent = 'Disconnect';
+    cloudConnectBtn.classList.remove('primary');
+    cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
+    cloudConnectBtn.disabled = false;
+    cloudSyncBtn.disabled = false;
+    cloudSyncBtn.style.background = '#28a745';
+} else {
+    if (cloudService === 'dropbox') {
+        cloudConnectBtn.textContent = 'Connect Dropbox';
+        cloudConnectBtn.style.background = '#0061FE';
     } else {
-        if (cloudService === 'dropbox') {
-            cloudConnectBtn.textContent = 'Connect Dropbox';
-            cloudConnectBtn.style.background = '#0061FE';
-        } else {
-            cloudConnectBtn.textContent = 'Connect Google';
-            cloudConnectBtn.style.background = '#4285F4';
-        }
-        cloudConnectBtn.classList.remove('primary');
-        cloudConnectBtn.disabled = false;
-        cloudSyncBtn.disabled = true;
+        cloudConnectBtn.textContent = 'Connect Google';
+        cloudConnectBtn.style.background = '#4285F4';
     }
+    cloudConnectBtn.classList.remove('primary');
+    cloudConnectBtn.disabled = false;
+    cloudSyncBtn.disabled = true;
+}
 }
 
 function setCloudStatus(msg, type = 'info') {

@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#121212">
     <title>Music Player</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css?v=2.38">
+    <link rel="stylesheet" href="style.css?v=2.39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -106,7 +106,7 @@
         </div>
 
         <div class="version-info-footer">
-            <span onclick="openSettings()">App Version: 2.38</span>
+            <span onclick="openSettings()">App Version: 2.39</span>
             <span class="footer-separator">•</span>
             <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
         </div>
@@ -166,7 +166,7 @@
                 </div>
 
                 <div class="version-info-footer">
-                    <span onclick="openSettings()">App Version: 2.38</span>
+                    <span onclick="openSettings()">App Version: 2.39</span>
                     <span class="footer-separator">•</span>
                     <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
                 </div>
@@ -252,53 +252,66 @@
                             <option value="gdrive">Google Drive</option>
                             <option value="ios-files">iOS Files (Manual)</option>
                         </select>
+                        <div class="control-row" style="margin-bottom: 12px;">
+                            <label>Service</label>
+                            <select id="cloud-service-select"
+                                style="background: #333; color: white; border: none; padding: 4px 8px; border-radius: 4px;">
+                                <option value="dropbox">Dropbox</option>
+                                <option value="gdrive">Google Drive</option>
+                                <option value="ios-files">iOS Files (Manual)</option>
+                            </select>
+                        </div>
+                        <p id="service-instruction"
+                            style="font-size: 0.8em; color: #ccc; margin-bottom: 12px; line-height: 1.4; white-space: pre-wrap;">
+                            <!-- Instructions injected by JS -->
+                        </p>
+                        <div class="control-row"
+                            style="flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px;">
+                            <label for="cloud-folder-path" style="font-size: 0.9em; color: #aaa;">Folder Path
+                                (Optional)</label>
+                            <input type="text" id="cloud-folder-path" placeholder="/Music" value="/"
+                                style="width: 100%; background: #333; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px;">
+                            <p style="font-size: 0.75em; color: #888;">Leave as / for root</p>
+                        </div>
+                        <div class="control-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                            <!-- App Key is now hardcoded in app.js for simplicity -->
+                        </div>
+                        <div style="margin-top: 16px; display: flex; gap: 10px;">
+                            <button id="cloud-connect-btn" class="control-btn sm"
+                                style="width: auto; padding: 0 16px; font-size: 14px; background: #0061FE;">Connect</button>
+                            <button id="cloud-sync-btn" class="control-btn sm"
+                                style="width: auto; padding: 0 16px; font-size: 14px; background: #28a745;"
+                                disabled>Sync</button>
+                        </div>
+                        <p id="cloud-status-msg"
+                            style="font-size: 0.8em; color: #aaa; margin-top: 8px; min-height: 1.2em;">
+                        </p>
                     </div>
-                    <div class="control-row"
-                        style="flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px;">
-                        <label for="cloud-folder-path" style="font-size: 0.9em; color: #aaa;">Folder Path
-                            (Optional)</label>
-                        <input type="text" id="cloud-folder-path" placeholder="/Music" value="/"
-                            style="width: 100%; background: #333; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px;">
-                        <p style="font-size: 0.75em; color: #888;">Leave as / for root</p>
-                    </div>
-                    <div class="control-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                        <!-- App Key is now hardcoded in app.js for simplicity -->
-                    </div>
-                    <div style="margin-top: 16px; display: flex; gap: 10px;">
-                        <button id="cloud-connect-btn" class="control-btn sm"
-                            style="width: auto; padding: 0 16px; font-size: 14px; background: #0061FE;">Connect</button>
-                        <button id="cloud-sync-btn" class="control-btn sm"
-                            style="width: auto; padding: 0 16px; font-size: 14px; background: #28a745;"
-                            disabled>Sync</button>
-                    </div>
-                    <p id="cloud-status-msg" style="font-size: 0.8em; color: #aaa; margin-top: 8px; min-height: 1.2em;">
-                    </p>
-                </div>
 
-                <div class="system-section"
-                    style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <h3>System</h3>
-                    <div class="control-row" style="justify-content: flex-start;">
-                        <button class="control-btn lg" onclick="forceUpdate()"
-                            style="background-color: transparent; color: white; width: 100%; justify-content: center; box-shadow: none; border: none; text-decoration: underline;">
-                            Force Reload / Update App
-                        </button>
+                    <div class="system-section"
+                        style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <h3>System</h3>
+                        <div class="control-row" style="justify-content: flex-start;">
+                            <button class="control-btn lg" onclick="forceUpdate()"
+                                style="background-color: transparent; color: white; width: 100%; justify-content: center; box-shadow: none; border: none; text-decoration: underline;">
+                                Force Reload / Update App
+                            </button>
+                        </div>
+                        <p style="font-size: 0.75em; color: #666; margin-top: 8px; text-align: center;">
+                            Ver: 2.39
+                        </p>
                     </div>
-                    <p style="font-size: 0.75em; color: #666; margin-top: 8px; text-align: center;">
-                        Ver: 2.38
-                    </p>
                 </div>
             </div>
         </div>
-    </div>
-    <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=2.38')
-                .then(reg => console.log('SW registered', reg))
-                .catch(err => console.error('SW registration failed', err));
-        }
-    </script>
+        <script src="app.js"></script>
+        <script>
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js?v=2.39')
+                    .then(reg => console.log('SW registered', reg))
+                    .catch(err => console.error('SW registration failed', err));
+            }
+        </script>
 </body>
 
 </html>
