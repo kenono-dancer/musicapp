@@ -29,6 +29,10 @@ const closeSettingsBtn = document.getElementById('close-settings-btn');
 const modalPlayPauseBtn = document.getElementById('modal-play-pause-btn');
 const modalPlayIcon = document.getElementById('modal-play-icon');
 const modalPauseIcon = document.getElementById('modal-pause-icon');
+const modalSeekSlider = document.getElementById('modal-seek-slider');
+const modalSeekMarkers = document.getElementById('modal-seek-markers');
+const modalCurrentTime = document.getElementById('modal-current-time');
+const modalDuration = document.getElementById('modal-duration');
 
 // Defined globally in index.html for robustness, but also here for reference if needed
 // window.openSettings = ...
@@ -285,6 +289,29 @@ function playSong(index) {
         navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
         navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
     }
+}
+
+function generateSeekMarkers() {
+    modalSeekMarkers.innerHTML = '';
+    const duration = audio.duration;
+    if (!duration || !isFinite(duration)) return;
+
+    // 0, 20, 40, 60, 80, 100%
+    for (let i = 0; i <= 5; i++) {
+        const percent = i * 20;
+        const time = (percent / 100) * duration;
+
+        const marker = document.createElement('div');
+        marker.className = 'seek-marker';
+        marker.style.left = `${percent}%`;
+
+        // Don't show text for 0% effectively (optional, but requested "with seconds")
+        // Check if overlaps too much? Simple version first.
+        marker.setAttribute('data-time', formatTime(time));
+
+        modalSeekMarkers.appendChild(marker);
+    }
+    modalDuration.textContent = formatTime(duration);
 }
 
 function togglePlayPause() {
@@ -584,6 +611,7 @@ skipBackBtn.addEventListener('mouseleave', stopRewind);
 audio.addEventListener('play', () => updatePlayPauseUI(true));
 audio.addEventListener('pause', () => updatePlayPauseUI(false));
 audio.addEventListener('ended', handleSongEnd);
+audio.addEventListener('loadedmetadata', generateSeekMarkers);
 
 audio.addEventListener('timeupdate', () => {
     if (!isDraggingSeek) {
@@ -592,6 +620,13 @@ audio.addEventListener('timeupdate', () => {
         currentTimeEl.textContent = formatTime(audio.currentTime);
     }
     durationEl.textContent = formatTime(audio.duration);
+
+    // Update Modal Slider
+    const percent = (audio.currentTime / audio.duration) * 100;
+    if (!isNaN(percent)) {
+        modalSeekSlider.value = percent;
+        modalCurrentTime.textContent = formatTime(audio.currentTime);
+    }
 });
 
 seekSlider.addEventListener('input', () => {
@@ -681,6 +716,15 @@ seekSlider.addEventListener('touchend', () => {
 // Speed Slider just needs stopProp
 speedSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 speedSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+
+// Modal Seek Slider
+modalSeekSlider.addEventListener('input', () => {
+    const time = (modalSeekSlider.value / 100) * audio.duration;
+    audio.currentTime = time;
+    modalCurrentTime.textContent = formatTime(time);
+});
+modalSeekSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+modalSeekSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
 
 // Skip Time
 window.skipTime = function (seconds) {

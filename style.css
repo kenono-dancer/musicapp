@@ -432,6 +432,88 @@ main {
     box-shadow: 0 0 10px rgba(187, 134, 252, 0.4);
 }
 
+/* Modal Time Controls */
+.modal-time-controls {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 24px;
+}
+
+.modal-seek-wrapper {
+    position: relative;
+    height: 40px;
+    /* Space for markers below */
+    margin-bottom: 8px;
+}
+
+#modal-seek-slider {
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    height: 4px;
+    background: #333;
+    border-radius: 2px;
+    margin: 0;
+    position: relative;
+    z-index: 2;
+    /* Above markers */
+}
+
+#modal-seek-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+    margin-top: -6px;
+}
+
+.seek-markers-container {
+    position: absolute;
+    top: 14px;
+    /* Below slider */
+    left: 0;
+    width: 100%;
+    height: 20px;
+    pointer-events: none;
+}
+
+.seek-marker {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 6px;
+    background: var(--text-secondary);
+    transform: translateX(-50%);
+}
+
+.seek-marker::after {
+    content: attr(data-time);
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.modal-time-display {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.modal-skip-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+}
+
 .slider-labels {
     display: flex;
     justify-content: space-between;
