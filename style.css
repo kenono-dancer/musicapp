@@ -164,7 +164,8 @@ main {
 /* ... existing code ... */
 
 /* Footer Fixed at Bottom */
-.version-info-footer {
+/* Footer Fixed at Bottom (Global Only) */
+#global-app-footer {
     position: absolute;
     bottom: 0;
     left: 0;
@@ -172,17 +173,26 @@ main {
     height: calc(50px + env(safe-area-inset-bottom));
     padding-top: 12px;
     padding-bottom: env(safe-area-inset-bottom);
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 12px;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
     background: var(--bg-color);
     /* Opaque background */
     z-index: 101;
     /* Above everything */
     border-top: 1px solid var(--glass-border);
+    justify-content: center;
+    align-items: flex-start;
+}
+
+/* Shared Version Footer Styling */
+.version-info-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    width: 100%;
+    padding: 16px 0;
+    /* Add padding for static instances */
 }
 
 .player-info {
