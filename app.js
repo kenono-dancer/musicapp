@@ -639,7 +639,7 @@ const cloudSyncBtn = document.getElementById('cloud-sync-btn');
 const cloudStatusMsg = document.getElementById('cloud-status-msg');
 
 const DROPBOX_CLIENT_ID = 'nagv63g1i31287s';
-const GOOGLE_CLIENT_ID = ''; // TODO: Enter Google Client ID
+const GOOGLE_CLIENT_ID = '630507478394-0t48nkg5ni575t3p4u5ib74joa678640.apps.googleusercontent.com';
 
 let cloudAccessToken = localStorage.getItem('cloud_access_token');
 let cloudService = localStorage.getItem('cloud_service') || 'dropbox';
