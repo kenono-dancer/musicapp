@@ -69,6 +69,21 @@ request.onerror = (e) => {
     console.error('DB Error', e);
 };
 
+// Request Persistent Storage
+if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().then(granted => {
+        console.log(granted ? 'Storage persistence granted' : 'Storage persistence denied');
+        if (granted) {
+            // Optional: Notify user or just log it
+            console.log('Your library is safe from auto-eviction.');
+        }
+    });
+
+    navigator.storage.estimate().then(estimate => {
+        console.log(`Using ${estimate.usage} / ${estimate.quota} bytes.`);
+    });
+}
+
 // Functions
 function loadSongs() {
     const transaction = db.transaction(['songs'], 'readonly');
