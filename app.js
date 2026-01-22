@@ -710,24 +710,7 @@ cloudConnectBtn.addEventListener('click', () => {
         return;
     }
 
-    // Check if using Manual Token
-    if (!cloudManualTokenInput.classList.contains('hidden')) {
-        const token = cloudManualTokenInput.value.trim();
-        if (!token) {
-            alert('Please enter an Access Token');
-            return;
-        }
-        // Sanitize token (remove newlines/spaces)
-        const cleanToken = token.trim();
-        cloudAccessToken = cleanToken;
-        localStorage.setItem('cloud_access_token', cleanToken);
-        updateCloudUI();
-        setCloudStatus('Token saved manually!', 'success');
-        // Reset UI state
-        cloudManualTokenInput.classList.add('hidden');
-        toggleManualTokenBtn.textContent = 'Or enter Access Token manually';
-        return;
-    }
+
 
     // CHECK GOOGLE
     if (cloudService === 'gdrive') {
