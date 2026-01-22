@@ -639,13 +639,40 @@ const cloudSyncBtn = document.getElementById('cloud-sync-btn');
 const cloudStatusMsg = document.getElementById('cloud-status-msg');
 
 const DROPBOX_CLIENT_ID = 'nagv63g1i31287s';
+const GOOGLE_CLIENT_ID = ''; // TODO: Enter Google Client ID
 
 let cloudAccessToken = localStorage.getItem('cloud_access_token');
+let cloudService = localStorage.getItem('cloud_service') || 'dropbox';
 let cloudFolderPath = localStorage.getItem('cloud_folder_path') || '/';
+
+// Initialize UI
+cloudServiceSelect.value = cloudService;
+if (cloudService === 'ios-files') {
+    cloudFolderPathInput.parentElement.classList.add('hidden'); // Folder path irrelevant for manual picker
+} else {
+    cloudFolderPathInput.parentElement.classList.remove('hidden');
+}
 
 // Restore inputs
 if (cloudFolderPath) cloudFolderPathInput.value = cloudFolderPath;
 updateCloudUI();
+
+// Service Switch Listener
+cloudServiceSelect.addEventListener('change', () => {
+    cloudService = cloudServiceSelect.value;
+    localStorage.setItem('cloud_service', cloudService);
+
+    // Reset Access Token if switching services (optional, but cleaner)
+    // For now, we keep token ONLY if it matches service? Simplified: Just clear UI state.
+    // cloudAccessToken = null; // Don't wipe immediately, maybe user switches back.
+
+    if (cloudService === 'ios-files') {
+        cloudFolderPathInput.parentElement.classList.add('hidden');
+    } else {
+        cloudFolderPathInput.parentElement.classList.remove('hidden');
+    }
+    updateCloudUI();
+});
 
 // Simplified Connect Listener
 cloudConnectBtn.addEventListener('click', () => {
@@ -720,7 +747,15 @@ cloudConnectBtn.addEventListener('click', () => {
 });
 
 cloudSyncBtn.addEventListener('click', async () => {
-    if (!cloudAccessToken) return;
+
+    // iOS Files Special Handling
+    if (cloudService === 'ios-files') {
+        // Trigger file input
+        fileInput.click();
+        return;
+    }
+
+    if (!cloudAccessToken && cloudService !== 'ios-files') return;
 
     // Save path preference
     const path = cloudFolderPathInput.value.trim();
@@ -730,7 +765,13 @@ cloudSyncBtn.addEventListener('click', async () => {
     try {
         setCloudStatus('Checking files...', 'loading');
         cloudSyncBtn.disabled = true;
-        await syncDropboxFiles();
+
+        if (cloudService === 'dropbox') {
+            await syncDropboxFiles();
+        } else if (cloudService === 'gdrive') {
+            throw new Error('Google Drive sync not implemented yet.');
+        }
+
         cloudSyncBtn.disabled = false;
         setCloudStatus('Sync complete!', 'success');
         setTimeout(() => setCloudStatus(''), 5000);
@@ -752,16 +793,33 @@ cloudSyncBtn.addEventListener('click', async () => {
 });
 
 function updateCloudUI() {
+    if (cloudService === 'ios-files') {
+        cloudConnectBtn.classList.add('hidden'); // No connect button needed
+        cloudSyncBtn.textContent = 'Import Files';
+        cloudSyncBtn.disabled = false;
+        cloudSyncBtn.style.background = '#007AFF'; // iOS Blue
+        return;
+    } else {
+        cloudConnectBtn.classList.remove('hidden');
+        cloudSyncBtn.textContent = 'Sync';
+    }
+
     if (cloudAccessToken) {
         cloudConnectBtn.textContent = 'Disconnect';
         cloudConnectBtn.classList.remove('primary');
         cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
         cloudConnectBtn.disabled = false;
         cloudSyncBtn.disabled = false;
+        cloudSyncBtn.style.background = '#28a745';
     } else {
-        cloudConnectBtn.textContent = 'Connect Dropbox';
+        if (cloudService === 'dropbox') {
+            cloudConnectBtn.textContent = 'Connect Dropbox';
+            cloudConnectBtn.style.background = '#0061FE';
+        } else {
+            cloudConnectBtn.textContent = 'Connect Google';
+            cloudConnectBtn.style.background = '#4285F4';
+        }
         cloudConnectBtn.classList.remove('primary');
-        cloudConnectBtn.style.background = '#0061FE'; // Dropbox Blue
         cloudConnectBtn.disabled = false;
         cloudSyncBtn.disabled = true;
     }

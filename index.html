@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#121212">
     <title>Music Player</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css?v=2.34">
+    <link rel="stylesheet" href="style.css?v=2.35">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -106,7 +106,7 @@
         </div>
 
         <div class="version-info-footer">
-            <span onclick="openSettings()">App Version: 2.34</span>
+            <span onclick="openSettings()">App Version: 2.35</span>
             <span class="footer-separator">•</span>
             <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
         </div>
@@ -166,7 +166,7 @@
                 </div>
 
                 <div class="version-info-footer">
-                    <span onclick="openSettings()">App Version: 2.34</span>
+                    <span onclick="openSettings()">App Version: 2.35</span>
                     <span class="footer-separator">•</span>
                     <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
                 </div>
@@ -243,12 +243,14 @@
             </div>
             <div class="modal-content">
                 <div class="cloud-sync-section">
-                    <h3>Cloud Sync</h3>
+                    <h3>Library Sync</h3>
                     <div class="control-row" style="margin-bottom: 12px;">
                         <label>Service</label>
                         <select id="cloud-service-select"
                             style="background: #333; color: white; border: none; padding: 4px 8px; border-radius: 4px;">
                             <option value="dropbox">Dropbox</option>
+                            <option value="gdrive">Google Drive</option>
+                            <option value="ios-files">iOS Files (Manual)</option>
                         </select>
                     </div>
                     <div class="control-row"
@@ -283,7 +285,7 @@
                         </button>
                     </div>
                     <p style="font-size: 0.75em; color: #666; margin-top: 8px; text-align: center;">
-                        Ver: 2.34
+                        Ver: 2.35
                     </p>
                 </div>
             </div>
@@ -292,7 +294,7 @@
     <script src="app.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=2.34')
+            navigator.serviceWorker.register('sw.js?v=2.35')
                 .then(reg => console.log('SW registered', reg))
                 .catch(err => console.error('SW registration failed', err));
         }
