@@ -275,7 +275,8 @@ main {
 
 .skip-group {
     display: flex;
-    gap: 8px;
+    gap: 2px;
+    /* Reduced from 8px */
 }
 
 .control-btn {
