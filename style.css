@@ -745,4 +745,4 @@ input:checked+.slider:before {
 .version-info-footer a:hover {
     text-decoration: underline;
     opacity: 1;
-}
+}\nbutton {\n    cursor: pointer;\n    touch-action: manipulation;\n}
