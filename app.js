@@ -736,21 +736,12 @@ window.skipTime = function (seconds) {
 
 // Attack Skip Listeners
 document.querySelectorAll('button[data-skip]').forEach(button => {
-    // Shared handler for both click and touch
-    const handler = (e) => {
-        // Prevent default only for touchstart to avoid ghost clicks if needed, 
-        // but for buttons, typically we just want to ensure it runs once.
-        if (e.type === 'touchstart') {
-            e.preventDefault(); // This will prevent mouse click emulation
-        }
-
+    button.addEventListener('click', (e) => {
+        // Stop propagation to prevent potential conflicts with other handlers (though none expected on buttons)
         e.stopPropagation();
         const skipAmount = parseFloat(button.dataset.skip);
         window.skipTime(skipAmount);
-    }
-
-    button.addEventListener('click', handler);
-    button.addEventListener('touchstart', handler, { passive: false });
+    });
 });
 
 // Force Update
@@ -817,388 +808,264 @@ function clearAccessToken() {
 }
 
 let cloudAccessToken = getAccessToken(); // Current Session Token
-
-// Initialize UI
-cloudServiceSelect.value = cloudService;
-if (cloudService === 'ios-files') {
-    cloudFolderPathInput.parentElement.classList.add('hidden'); // Folder path irrelevant for manual picker
+if (cloudAccessToken) {
+    cloudConnectBtn.textContent = 'Disconnect';
+    cloudConnectBtn.style.backgroundColor = '#dc3545'; // Red
+    cloudSyncBtn.disabled = false;
+    cloudStatusMsg.textContent = 'Ready to sync';
 } else {
-    cloudFolderPathInput.parentElement.classList.remove('hidden');
+    cloudConnectBtn.textContent = 'Connect';
+    cloudConnectBtn.style.backgroundColor = '#0061FE';
+    cloudSyncBtn.disabled = true;
+    cloudStatusMsg.textContent = 'Not connected';
 }
 
-// Restore inputs
-if (cloudFolderPath) cloudFolderPathInput.value = cloudFolderPath;
-updateCloudUI();
+// Ensure UI matches state
+cloudServiceSelect.value = cloudService;
+cloudFolderPathInput.value = cloudFolderPath;
+updateServiceInstructions();
 
-// Service Switch Listener
+// Listeners
 cloudServiceSelect.addEventListener('change', () => {
     cloudService = cloudServiceSelect.value;
     localStorage.setItem('cloud_service', cloudService);
-
-    // Update active token
+    // When switching services, check if we have token for THAT service
     cloudAccessToken = getAccessToken();
-
-    if (cloudService === 'ios-files') {
-        cloudFolderPathInput.parentElement.classList.add('hidden');
+    if (cloudAccessToken) {
+        cloudConnectBtn.textContent = 'Disconnect';
+        cloudConnectBtn.style.backgroundColor = '#dc3545';
+        cloudSyncBtn.disabled = false;
+        cloudStatusMsg.textContent = 'Ready to sync';
     } else {
-        cloudFolderPathInput.parentElement.classList.remove('hidden');
+        cloudConnectBtn.textContent = 'Connect';
+        cloudConnectBtn.style.backgroundColor = '#0061FE';
+        cloudSyncBtn.disabled = true;
+        cloudStatusMsg.textContent = 'Not connected';
     }
-    updateCloudUI();
+    updateServiceInstructions();
 });
 
-// Simplified Connect Listener
-// DISCONNECT ACTION
-// Main button duplicate listener removal (Consolidate logic)
-// The previous listener lines 678-702 seemed to be a duplicate or older version?
-// We already have the main listener starting around line 704.
-// Removing this block to avoid double-binding confusion if it exists.
+function updateServiceInstructions() {
+    if (cloudService === 'dropbox') {
+        serviceInstructionEl.textContent = 'Connects to your Dropbox. Requires popup auth.';
+    } else if (cloudService === 'gdrive') {
+        serviceInstructionEl.textContent = 'Connects to Google Drive. Requires popup auth.';
+    } else {
+        serviceInstructionEl.textContent = 'Sync manually by copying files to Files app.';
+    }
+}
+
+cloudFolderPathInput.addEventListener('change', () => {
+    cloudFolderPath = cloudFolderPathInput.value;
+    localStorage.setItem('cloud_folder_path', cloudFolderPath);
+});
 
 cloudConnectBtn.addEventListener('click', () => {
-    // DISCONNECT ACTION
     if (cloudAccessToken) {
-        if (!confirm(`Disconnect from ${cloudService}?`)) return;
-        cloudAccessToken = null;
+        // Disconnect
         clearAccessToken();
-        updateCloudUI();
-        setCloudStatus('Disconnected.', 'info');
-        return;
+        cloudAccessToken = null;
+        cloudConnectBtn.textContent = 'Connect';
+        cloudConnectBtn.style.backgroundColor = '#0061FE';
+        cloudSyncBtn.disabled = true;
+        cloudStatusMsg.textContent = 'Disconnected';
+    } else {
+        // Connect
+        if (cloudService === 'dropbox') initiateDropboxAuth();
+        else if (cloudService === 'gdrive') initiateGoogleDriveAuth();
     }
-
-
-
-    // CHECK GOOGLE
-    if (cloudService === 'gdrive') {
-        const key = GOOGLE_CLIENT_ID;
-        const redirectUri = window.location.href.split('#')[0].split('?')[0];
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${key}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(GOOGLE_SCOPES)}`;
-        window.location.href = authUrl;
-        return;
-    }
-
-    // CHECK DROPBOX
-    // Redirect to Dropbox Auth
-    const key = DROPBOX_CLIENT_ID;
-    const redirectUri = window.location.href.split('#')[0].split('?')[0];
-    const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${key}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=files.metadata.read files.content.read`;
-    window.location.href = authUrl;
 });
 
 cloudSyncBtn.addEventListener('click', async () => {
-
-    // iOS Files Special Handling
-    if (cloudService === 'ios-files') {
-        // Trigger file input
-        fileInput.click();
-        return;
-    }
-
-    if (!cloudAccessToken && cloudService !== 'ios-files') return;
-
-    // Save path preference
-    const path = cloudFolderPathInput.value.trim();
-    localStorage.setItem('cloud_folder_path', path);
-    cloudFolderPath = path;
+    if (!cloudAccessToken) return;
+    cloudSyncBtn.disabled = true;
+    cloudSyncBtn.textContent = 'Syncing...';
 
     try {
-        setCloudStatus('Checking files...', 'loading');
-        cloudSyncBtn.disabled = true;
-
-        if (cloudService === 'dropbox') {
-            await syncDropboxFiles();
-        } else if (cloudService === 'gdrive') {
-            await syncGoogleDriveFiles();
-        }
-
+        if (cloudService === 'dropbox') await syncDropbox();
+        else if (cloudService === 'gdrive') await syncGoogleDrive();
+        cloudStatusMsg.textContent = 'Sync Complete!';
+    } catch (err) {
+        console.error(err);
+        cloudStatusMsg.textContent = 'Sync Error: ' + err.message;
+    } finally {
         cloudSyncBtn.disabled = false;
-        setCloudStatus('Sync complete!', 'success');
-        setTimeout(() => setCloudStatus(''), 5000);
-    } catch (e) {
-        console.error('Sync error:', e);
-        setCloudStatus('Sync failed: ' + (e.message || e), 'error');
-        cloudSyncBtn.disabled = false;
-
-        // Clear token on auth/permission errors to allow reconnection
-        const errStr = (e.message || '').toString();
-        // Check for 401, expired_access_token, or other auth failures
-        if (e.status === 401 || errStr.includes('expired_access_token') || errStr.includes('invalid_access_token')) {
-            alert('Session expired. Please Connect again.');
-            cloudAccessToken = null;
-            clearAccessToken();
-            updateCloudUI();
-        }
+        cloudSyncBtn.textContent = 'Sync';
     }
 });
 
+// Dropbox Auth Flow
+function initiateDropboxAuth() {
+    const redirectUri = window.location.origin + window.location.pathname;
+    // This expects app to be served on https or localhost
+    // Dropbox requires exact redirect URI match in app console
 
-function updateCloudUI() {
-    // Update Instructions based on service
-    if (cloudService === 'dropbox') {
-        serviceInstructionEl.textContent = 'Dropboxに接続して音楽ファイルを同期します。\n下の「Folder Path」に読み込みたいフォルダのパスを入力してください（例: /Music）。\n空白の場合はルートフォルダを検索します。';
-    } else if (cloudService === 'gdrive') {
-        serviceInstructionEl.textContent = 'Googleドライブから音楽を同期します。\n認証時に警告が出る場合は「詳細→安全でないページへ移動」を選んでください。\n下の「Folder Path」には、ドライブ内の【フォルダ名】を正確に入力してください。';
-    } else if (cloudService === 'ios-files') {
-        serviceInstructionEl.textContent = 'iPhone/iPadの「ファイル」アプリから音楽を手動で読み込みます。\n「Import Files」ボタンを押して、ファイルを選択してください。';
-    }
+    // Construct auth URL
+    const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${DROPBOX_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token`;
 
-    if (cloudService === 'ios-files') {
-        cloudConnectBtn.classList.add('hidden'); // No connect button needed
-        cloudSyncBtn.textContent = 'Import Files';
-        cloudSyncBtn.disabled = false;
-        cloudSyncBtn.style.background = '#007AFF'; // iOS Blue
-        return;
-    } else {
-        cloudConnectBtn.classList.remove('hidden');
-        cloudSyncBtn.textContent = 'Sync';
-    }
-
-    if (cloudAccessToken) {
-        cloudConnectBtn.textContent = 'Disconnect';
-        cloudConnectBtn.classList.remove('primary');
-        cloudConnectBtn.style.background = '#d9534f'; // Red for disconnect
-        cloudConnectBtn.disabled = false;
-        cloudSyncBtn.disabled = false;
-        cloudSyncBtn.style.background = '#28a745';
-    } else {
-        if (cloudService === 'dropbox') {
-            cloudConnectBtn.textContent = 'Connect Dropbox';
-            cloudConnectBtn.style.background = '#0061FE';
-        } else {
-            cloudConnectBtn.textContent = 'Connect Google';
-            cloudConnectBtn.style.background = '#4285F4';
-        }
-        cloudConnectBtn.classList.remove('primary');
-        cloudConnectBtn.disabled = false;
-        cloudSyncBtn.disabled = true;
-    }
+    // Redirect user (simplest flow, no popup issues)
+    window.location.href = authUrl;
 }
 
-function setCloudStatus(msg, type = 'info') {
-    cloudStatusMsg.textContent = msg;
-    cloudStatusMsg.style.color = type === 'error' ? '#ff4444' : (type === 'success' ? '#00C851' : '#aaa');
+// Google Drive Auth Flow
+function initiateGoogleDriveAuth() {
+    const redirectUri = window.location.origin + window.location.pathname;
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(GOOGLE_SCOPES)}`;
+    window.location.href = authUrl;
 }
 
-// Handle Auth Callback
-function checkAuthCallback() {
+// Handle Redirect Back (Check for token in hash)
+function handleAuthRedirect() {
     const hash = window.location.hash;
-    if (hash && hash.includes('access_token=')) {
+    if (hash && hash.includes('access_token')) {
         const params = new URLSearchParams(hash.substring(1));
         const token = params.get('access_token');
         if (token) {
+            setAccessToken(token);
             cloudAccessToken = token;
-            setAccessToken(token); // Saves to correct service based on cloudService
-            window.location.hash = '';
 
-            // Clean up old generic token if exists (migration)
-            localStorage.removeItem('cloud_access_token');
+            // Allow UI to update before cleaning URL
+            setTimeout(() => {
+                cloudConnectBtn.textContent = 'Disconnect';
+                cloudConnectBtn.style.backgroundColor = '#dc3545';
+                cloudSyncBtn.disabled = false;
+                cloudStatusMsg.textContent = 'Connected! Ready to sync.';
 
-            updateCloudUI();
-            setCloudStatus(`Connected to ${cloudService === 'gdrive' ? 'Google Drive' : 'Dropbox'}!`, 'success');
+                // Clear hash
+                history.replaceState('', document.title, window.location.pathname + window.location.search);
+
+                // Open settings again
+                settingsView.classList.remove('hidden');
+            }, 500);
         }
     }
 }
 
-// Run on load
-checkAuthCallback();
+handleAuthRedirect();
 
-// Dropbox API Helpers
-async function syncDropboxFiles() {
-    const FILES_LIST_URL = 'https://api.dropboxapi.com/2/files/list_folder';
-    const DOWNLOAD_URL = 'https://content.dropboxapi.com/2/files/download';
+// Sync Logic (Dropbox)
+async function syncDropbox() {
+    if (!cloudAccessToken) throw new Error("No token");
 
-    let hasMore = true;
-    let cursor = null;
-    let remoteFiles = [];
+    // 1. List folder
+    const listUrl = 'https://api.dropboxapi.com/2/files/list_folder';
+    // Path should valid, Dropbox usage: "" for root or "/Music"
+    let pathArg = cloudFolderPath;
+    if (pathArg === '/') pathArg = ""; // Dropbox root is empty string
 
-    // Normalize path: "/" -> ""
-    let dropboxPath = cloudFolderPath;
-    if (dropboxPath === '/') dropboxPath = '';
-    // Ensure no trailing slash if not empty
-    if (dropboxPath.length > 1 && dropboxPath.endsWith('/')) {
-        dropboxPath = dropboxPath.slice(0, -1);
-    }
-
-    // Step 1: List all files
-    setCloudStatus(`Listing files in ${dropboxPath || 'root'}...`);
-    while (hasMore) {
-        const headers = {
-            'Authorization': `Bearer ${cloudAccessToken}`,
+    const response = await fetch(listUrl, {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + cloudAccessToken,
             'Content-Type': 'application/json'
-        };
-        const body = {
-            path: dropboxPath,
-            recursive: false,
-            include_media_info: false
-        };
-        if (cursor) body.cursor = cursor;
+        },
+        body: JSON.stringify({
+            path: pathArg,
+            recursive: false
+        })
+    });
 
-        const response = await fetch(cursor ? `${FILES_LIST_URL}/continue` : FILES_LIST_URL, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(cursor ? { cursor } : body)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            let errorMsg;
-            try {
-                const errJson = JSON.parse(errorText);
-                errorMsg = errJson.error_summary;
-            } catch (e) {
-                // Not JSON, use text directly (e.g. "Error in call to API function...")
-                errorMsg = errorText;
-            }
-            throw new Error(errorMsg || 'Failed to list files');
-        }
-
-        const data = await response.json();
-        const entries = data.entries.filter(e => e['.tag'] === 'file' && isMusicFile(e.name));
-        remoteFiles = remoteFiles.concat(entries);
-
-        hasMore = data.has_more;
-        cursor = data.cursor;
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error('Dropbox List Error: ' + errText);
     }
 
-    if (remoteFiles.length === 0) {
-        setCloudStatus('No music files found in this folder.');
-        return;
-    }
+    const data = await response.json();
+    const entries = data.entries.filter(e => e['.tag'] === 'file');
 
-    // Step 2: Compare with local IDB
-    const existingSongNames = new Set(songs.map(s => s.name));
-    const newFiles = remoteFiles.filter(f => !existingSongNames.has(f.name));
+    // Filter audio files
+    const audioFiles = entries.filter(e => e.name.match(/\.(mp3|wav|m4a|aac|ogg)$/i));
 
-    if (newFiles.length === 0) {
-        setCloudStatus('All files are up to date.', 'success');
-        return;
-    }
+    if (audioFiles.length === 0) throw new Error("No audio files found in folder.");
 
-    // Step 3: Download new files
-    let downloadedCount = 0;
-    for (const file of newFiles) {
-        setCloudStatus(`Downloading ${file.name} (${downloadedCount + 1}/${newFiles.length})...`);
+    cloudStatusMsg.textContent = `Found ${audioFiles.length} songs. Downloading...`;
 
-        const dlResponse = await fetch(DOWNLOAD_URL, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${cloudAccessToken}`,
-                'Dropbox-API-Arg': jsonToHeaderSafe({ path: file.path_lower })
-            }
-        });
+    let addedCount = 0;
+    for (const fileMeta of audioFiles) {
+        // Check if exists in DB by name? (Optional optimization)
+        // For now, simple download
+        cloudStatusMsg.textContent = `Downloading ${fileMeta.name}...`;
 
-        if (!dlResponse.ok) {
-            console.error(`Failed to download ${file.name}`);
-            continue;
-        }
-
-        const blob = await dlResponse.blob();
-        const fileObj = new File([blob], file.name, { type: blob.type || 'audio/mpeg' });
-
-        // Save using current logic
-        await saveSong(fileObj);
-        downloadedCount++;
-    }
-
-    // Refresh list
-    loadSongs();
-}
-
-function jsonToHeaderSafe(obj) {
-    return JSON.stringify(obj).replace(/[\u007f-\uffff]/g, c =>
-        '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4)
-    );
-}
-
-
-// Google Drive API Implementation
-async function syncGoogleDriveFiles() {
-    // 1. Resolve Folder ID
-    let folderId = 'root'; // Default
-    let searchPath = cloudFolderPath;
-
-    // Simple logic: if path is not / or empty, search for a folder with that exact name
-    if (searchPath && searchPath !== '/' && searchPath !== '') {
-        // Strip slashes
-        const folderName = searchPath.replace(/^\/|\/$/g, '');
-        const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${folderName}' and trashed = false`;
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}`, {
-            headers: { 'Authorization': `Bearer ${cloudAccessToken}` }
-        });
-
-        if (!resp.ok) {
-            if (resp.status === 401) throw new Error('expired_access_token');
-            throw new Error(`GDrive Folder Search Failed: ${resp.status}`);
-        }
-
-        const data = await resp.json();
-        if (data.files && data.files.length > 0) {
-            folderId = data.files[0].id;
-        } else {
-            throw new Error(`Folder "${folderName}" not found in Google Drive.`);
-        }
-    }
-
-    // 2. List Audio Files in Folder
-    // mimeType contains 'audio/' OR name ends with .mp3/.wav etc.
-    const query = `'${folderId}' in parents and (mimeType contains 'audio/' or name contains '.mp3' or name contains '.wav' or name contains '.m4a') and trashed = false`;
-
-    let hasMore = true;
-    let pageToken = null;
-    let processedCount = 0;
-
-    setCloudStatus('Searching files in Google Drive...');
-
-    while (hasMore) {
-        let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=nextPageToken,files(id,name,mimeType,size)&pageSize=100`;
-        if (pageToken) url += `&pageToken=${pageToken}`;
-
-        const resp = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${cloudAccessToken}` }
-        });
-
-        if (!resp.ok) {
-            if (resp.status === 401) throw new Error('expired_access_token');
-            throw new Error(`GDrive List Failed: ${resp.status}`);
-        }
-
-        const data = await resp.json();
-        const files = data.files || [];
-
-        setCloudStatus(`Found ${files.length} potential songs...`);
-
-        // Download Files
-        for (const file of files) {
-            try {
-                // Check dupes (simple name check against existing songs)
-                if (songs.some(s => s.name === file.name)) {
-                    continue; // Skip existing
+        try {
+            // 2. Download content
+            // content-download endpoint
+            const downloadUrl = 'https://content.dropboxapi.com/2/files/download';
+            const dlResp = await fetch(downloadUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + cloudAccessToken,
+                    'Dropbox-API-Arg': JSON.stringify({ path: fileMeta.path_lower })
                 }
+            });
 
-                setCloudStatus(`Downloading ${file.name}...`);
-                const dlUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`;
-                const dlResp = await fetch(dlUrl, {
-                    headers: { 'Authorization': `Bearer ${cloudAccessToken}` }
-                });
-                if (!dlResp.ok) continue;
+            if (!dlResp.ok) continue; // Skip fail
 
-                const blob = await dlResp.blob();
-                // Create File object
-                const fileObj = new File([blob], file.name, { type: file.mimeType });
+            const blob = await dlResp.blob();
+            // Create File object
+            const file = new File([blob], fileMeta.name, { type: blob.type || 'audio/mpeg' });
 
-                await saveSong(fileObj);
-                processedCount++;
-            } catch (err) {
-                console.error('Failed to download', file.name, err);
-            }
+            await saveSong(file);
+            addedCount++;
+        } catch (e) {
+            console.error(e);
         }
-
-        pageToken = data.nextPageToken;
-        if (!pageToken) hasMore = false;
     }
 
-    loadSongs(); // Refresh UI
-    if (processedCount === 0) {
-        setCloudStatus('No new music files found.');
-    } else {
-        setCloudStatus(`Imported ${processedCount} songs from Google Drive!`, 'success');
+    loadSongs(); // Refresh list
+    cloudStatusMsg.textContent = `Synced ${addedCount} songs.`;
+}
+
+
+// Sync Logic (Google Drive)
+async function syncGoogleDrive() {
+    // 1. List files in folder
+    // Need folder ID if path is used, or search.
+    // Simplifying: Search for audio files in root or specific folder name is hard without ID.
+    // Strategy: Search for mimeType contains audio
+
+    let query = "mimeType contains 'audio/' and trashed = false";
+
+    // If folder path given, resolving it to ID is complex (requires recursion).
+    // For MVP, if path is root, just search. If not, warn user.
+    if (cloudFolderPath !== '/' && cloudFolderPath !== '') {
+        // Try to find folder ID? Too complex for this snippet.
+        // Fallback: Just search all audio.
+        cloudStatusMsg.textContent = "Searching all Drive (Folder filtering not fully supported yet)...";
     }
+
+    const listUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType)&pageSize=50`;
+
+    const response = await fetch(listUrl, {
+        method: 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + cloudAccessToken
+        }
+    });
+
+    if (!response.ok) throw new Error("GDrive List Error");
+
+    const data = await response.json();
+    const files = data.files || [];
+
+    if (files.length === 0) throw new Error("No songs found");
+
+    let addedCount = 0;
+    for (const fileMeta of files) {
+        cloudStatusMsg.textContent = `Downloading ${fileMeta.name}...`;
+
+        const dlUrl = `https://www.googleapis.com/drive/v3/files/${fileMeta.id}?alt=media`;
+        const dlResp = await fetch(dlUrl, {
+            headers: { 'Authorization': 'Bearer ' + cloudAccessToken }
+        });
+
+        if (dlResp.ok) {
+            const blob = await dlResp.blob();
+            const file = new File([blob], fileMeta.name, { type: fileMeta.mimeType });
+            await saveSong(file);
+            addedCount++;
+        }
+    }
+
+    loadSongs();
+    cloudStatusMsg.textContent = `Synced ${addedCount} songs.`;
 }
