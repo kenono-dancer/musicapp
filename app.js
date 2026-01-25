@@ -214,22 +214,33 @@ function renderSongList() {
                     </div>
                 </div>
                 <div class="song-actions">
-                    <button class="reorder-btn" onclick="moveSong(${index}, -1, event)" ${isFirst ? 'disabled' : ''}>
+                    <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5z"/></svg>
                     </button>
-                    <button class="reorder-btn" onclick="moveSong(${index}, 1, event)" ${isLast ? 'disabled' : ''}>
+                    <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                     </button>
-                    <button class="delete-btn" onclick="deleteSong(${song.id}, event)">
+                    <button class="delete-btn">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
                 </div>
             `;
-            li.onclick = (e) => {
-                // Ignore clicks on buttons
+
+            // Attach Listeners
+            const moveUpBtn = li.querySelector('.move-up');
+            const moveDownBtn = li.querySelector('.move-down');
+            const deleteBtn = li.querySelector('.delete-btn');
+
+            if (moveUpBtn) moveUpBtn.addEventListener('click', (e) => moveSong(index, -1, e));
+            if (moveDownBtn) moveDownBtn.addEventListener('click', (e) => moveSong(index, 1, e));
+            if (deleteBtn) deleteBtn.addEventListener('click', (e) => deleteSong(song.id, e));
+
+            li.addEventListener('click', (e) => {
+                // Ignore clicks on buttons (handled above with stopPropagation ideally, but explicit check is safer if stopPropagation missed)
                 if (e.target.closest('button')) return;
                 playSong(index);
-            };
+            });
+
             songList.appendChild(li);
         });
     }
