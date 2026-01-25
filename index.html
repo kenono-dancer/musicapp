@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#121212">
     <title>Music Player</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css?v=2.57">
+    <link rel="stylesheet" href="style.css?v=2.59">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -110,7 +110,7 @@
 
 
         <div id="global-app-footer" class="version-info-footer">
-            <span onclick="openSettings()">App Version: 2.57</span>
+            <span onclick="openSettings()">App Version: 2.59</span>
             <span class="footer-separator">•</span>
             <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
         </div>
@@ -153,6 +153,16 @@
                     </svg>
                 </button>
 
+                <!-- Expanded Progress (Restored) -->
+                <div class="expanded-progress-container">
+                    <input type="range" id="modal-seek-slider" min="0" max="100" value="0">
+                    <div id="modal-seek-markers" class="seek-markers"></div>
+                    <div class="time-info">
+                        <span id="modal-current-time">0:00</span>
+                        <span id="modal-duration">0:00</span>
+                    </div>
+                </div>
+
                 <div class="speed-control-section">
                     <div class="control-row">
                         <label>Speed: <span id="speed-value">1.00</span>x</label>
@@ -181,7 +191,7 @@
                 </div>
 
                 <div class="version-info-footer">
-                    <span onclick="openSettings()">App Version: 2.57</span>
+                    <span onclick="openSettings()">App Version: 2.59</span>
                     <span class="footer-separator">•</span>
                     <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
                 </div>
@@ -305,7 +315,7 @@
                             </button>
                         </div>
                         <p style="font-size: 0.75em; color: #666; margin-top: 8px; text-align: center;">
-                            Ver: 2.57
+                            Ver: 2.59
                         </p>
                     </div>
                 </div>
@@ -320,7 +330,7 @@
             };
 
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js?v=2.57')
+                navigator.serviceWorker.register('sw.js?v=2.59')
                     .then(reg => console.log('SW registered', reg))
                     .catch(err => console.error('SW registration failed', err));
             }
