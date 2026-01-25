@@ -734,6 +734,19 @@ window.skipTime = function (seconds) {
     }
 };
 
+// Attack Skip Listeners
+document.querySelectorAll('button[data-skip]').forEach(button => {
+    button.addEventListener('click', (e) => {
+        // Stop propagation to prevent potential conflicts with other handlers (though none expected on buttons)
+        e.stopPropagation();
+        const skipAmount = parseFloat(button.dataset.skip);
+        window.skipTime(skipAmount);
+    });
+    // Add touchstart listener to improve responsiveness on mobile?
+    // Usually click is fine if viewport is configured correctly (fastclick not needed in modern browsers)
+    // But let's prevent default double-tap zoom if any issue.
+});
+
 // Force Update
 // Force Update
 window.forceUpdate = async function () {
