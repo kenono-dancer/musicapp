@@ -736,15 +736,21 @@ window.skipTime = function (seconds) {
 
 // Attack Skip Listeners
 document.querySelectorAll('button[data-skip]').forEach(button => {
-    button.addEventListener('click', (e) => {
-        // Stop propagation to prevent potential conflicts with other handlers (though none expected on buttons)
+    // Shared handler for both click and touch
+    const handler = (e) => {
+        // Prevent default only for touchstart to avoid ghost clicks if needed, 
+        // but for buttons, typically we just want to ensure it runs once.
+        if (e.type === 'touchstart') {
+            e.preventDefault(); // This will prevent mouse click emulation
+        }
+
         e.stopPropagation();
         const skipAmount = parseFloat(button.dataset.skip);
         window.skipTime(skipAmount);
-    });
-    // Add touchstart listener to improve responsiveness on mobile?
-    // Usually click is fine if viewport is configured correctly (fastclick not needed in modern browsers)
-    // But let's prevent default double-tap zoom if any issue.
+    }
+
+    button.addEventListener('click', handler);
+    button.addEventListener('touchstart', handler, { passive: false });
 });
 
 // Force Update

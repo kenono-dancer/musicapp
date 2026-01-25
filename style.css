@@ -308,11 +308,13 @@ main {
 }
 
 .control-btn.xs {
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--text-secondary);
-    width: 32px;
-    height: 32px;
+    width: 48px;
+    /* Increased from 32px */
+    height: 48px;
+    /* Increased from 32px */
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);
     display: flex;
