@@ -231,9 +231,18 @@ function renderSongList() {
             const moveDownBtn = li.querySelector('.move-down');
             const deleteBtn = li.querySelector('.delete-btn');
 
-            if (moveUpBtn) moveUpBtn.addEventListener('click', (e) => moveSong(index, -1, e));
-            if (moveDownBtn) moveDownBtn.addEventListener('click', (e) => moveSong(index, 1, e));
-            if (deleteBtn) deleteBtn.addEventListener('click', (e) => deleteSong(song.id, e));
+            if (moveUpBtn) {
+                moveUpBtn.addEventListener('click', (e) => moveSong(index, -1, e));
+                moveUpBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            }
+            if (moveDownBtn) {
+                moveDownBtn.addEventListener('click', (e) => moveSong(index, 1, e));
+                moveDownBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            }
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', (e) => deleteSong(song.id, e));
+                deleteBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            }
 
             li.addEventListener('click', (e) => {
                 // Ignore clicks on buttons (handled above with stopPropagation ideally, but explicit check is safer if stopPropagation missed)

@@ -146,8 +146,13 @@ main {
     background: none;
     border: none;
     color: var(--text-secondary);
-    padding: 8px;
-    margin-left: 8px;
+    padding: 12px;
+    /* Increased touch target */
+    margin-left: 4px;
+}
+
+button svg {
+    pointer-events: none;
 }
 
 /* Player Bar */
@@ -745,4 +750,10 @@ input:checked+.slider:before {
 .version-info-footer a:hover {
     text-decoration: underline;
     opacity: 1;
-}\nbutton {\n    cursor: pointer;\n    touch-action: manipulation;\n}
+}
+
+\nbutton {
+    \n cursor: pointer;
+    \n touch-action: manipulation;
+    \n
+}
