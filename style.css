@@ -531,8 +531,8 @@ button svg {
 .seek-marker::after {
     content: attr(data-time);
     position: absolute;
-    top: 14px;
-    /* Increased from 8px to prevent overlap with line */
+    top: 20px;
+    /* Further increased to 20px to effectively eliminate overlap */
     left: 50%;
     transform: translateX(-50%);
     font-size: 0.65rem;
