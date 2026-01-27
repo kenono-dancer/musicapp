@@ -735,17 +735,17 @@ audio.addEventListener('loadedmetadata', generateSeekMarkers);
 audio.addEventListener('timeupdate', () => {
     if (!isDraggingSeek) {
         const percent = (audio.currentTime / audio.duration) * 100;
-        seekSlider.value = isNaN(percent) ? 0 : percent;
-        currentTimeEl.textContent = formatTime(audio.currentTime);
-    }
-    durationEl.textContent = formatTime(audio.duration);
+        const validPercent = isNaN(percent) ? 0 : percent;
 
-    // Update Modal Slider
-    const percent = (audio.currentTime / audio.duration) * 100;
-    if (!isNaN(percent)) {
-        modalSeekSlider.value = percent;
+        // Update Main Slider
+        seekSlider.value = validPercent;
+        currentTimeEl.textContent = formatTime(audio.currentTime);
+
+        // Update Modal Slider
+        modalSeekSlider.value = validPercent;
         modalCurrentTime.textContent = formatTime(audio.currentTime);
     }
+    durationEl.textContent = formatTime(audio.duration);
     updateSeekMarkers();
 });
 
