@@ -525,7 +525,10 @@ button svg {
     width: 1px;
     height: 6px;
     background: var(--text-secondary);
+    /* This is the vertical line */
     transform: translateX(-50%);
+    color: transparent;
+    /* Hide any internal text that might be jamming the layout */
 }
 
 .seek-marker::after {
@@ -537,6 +540,7 @@ button svg {
     transform: translateX(-50%);
     font-size: 0.65rem;
     color: var(--text-secondary);
+    /* Text color restored here */
     white-space: nowrap;
 }
 
