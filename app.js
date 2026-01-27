@@ -714,7 +714,6 @@ function handleBackTouchEnd(e) {
 // Mobile needs touchstart/touchend, Desktop mousedown/mouseup
 
 // Forward
-// Forward
 skipFwdBtn.addEventListener('mousedown', startFastForward);
 skipFwdBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startFastForward(); });
 skipFwdBtn.addEventListener('mouseup', stopFastForward);
@@ -761,26 +760,71 @@ seekSlider.addEventListener('change', () => {
     isDraggingSeek = false;
 });
 
-// Update Seek Markers (25%, 50%, 75%)
+// Modal Controls logic
+const modalSkipBackBtn = document.getElementById('modal-skip-back-btn');
+const modalSkipFwdBtn = document.getElementById('modal-skip-fwd-btn');
+
+if (modalSkipBackBtn) {
+    modalSkipBackBtn.addEventListener('click', () => {
+        audio.currentTime = 0;
+    });
+}
+if (modalSkipFwdBtn) {
+    modalSkipFwdBtn.addEventListener('click', () => {
+        playNext();
+    });
+}
+
+modalSeekSlider.addEventListener('input', () => {
+    isDraggingSeek = true;
+    const time = (modalSeekSlider.value / 100) * audio.duration;
+    modalCurrentTime.textContent = formatTime(time);
+    audio.currentTime = time;
+});
+
+modalSeekSlider.addEventListener('change', () => {
+    isDraggingSeek = false;
+});
+
+// Update Seek Markers (Modal - Update Text)
 function updateSeekMarkers() {
     const duration = audio.duration;
-    if (isNaN(duration) || duration === 0) {
-        document.getElementById('marker-25').textContent = '';
-        document.getElementById('marker-50').textContent = '';
-        document.getElementById('marker-75').textContent = '';
-        return;
-    }
+    if (isNaN(duration) || duration === 0) return;
 
-    document.getElementById('marker-25').textContent = formatTime(duration * 0.25);
-    document.getElementById('marker-50').textContent = formatTime(duration * 0.50);
-    document.getElementById('marker-75').textContent = formatTime(duration * 0.75);
+    const m25 = document.getElementById('marker-25');
+    const m50 = document.getElementById('marker-50');
+    const m75 = document.getElementById('marker-75');
+
+    // Only update if elements exist (in player bar)
+    if (m25) m25.textContent = formatTime(duration * 0.25);
+    if (m50) m50.textContent = formatTime(duration * 0.50);
+    if (m75) m75.textContent = formatTime(duration * 0.75);
 }
+
+
+// Delegate Data Skip Buttons (Global)
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-skip]');
+    if (btn) {
+        e.stopPropagation(); // Prevent list click
+        const skip = parseFloat(btn.dataset.skip);
+        if (!isNaN(skip) && audio.src) {
+            audio.currentTime += skip;
+        }
+    }
+});
+
 
 // Modal & Settings
 expandControlsBtn.addEventListener('click', () => {
     playerModal.classList.remove('hidden');
-    generateSeekMarkers(); // Refresh markers in case they were missed
+    generateSeekMarkers(); // Ensure markers are tailored to modal if we dynamic gen them
 });
+
+// Re-generate markers for modal to ensure new layout logic? 
+// Actually generateSeekMarkers in current code targets `modalSeekMarkers` div.
+// We updated HTML to have id="modal-seek-markers" inside .seek-container.
+// We should check generateSeekMarkers implementation.
 
 closeModalBtn.addEventListener('click', () => {
     playerModal.classList.add('hidden');
