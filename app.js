@@ -588,9 +588,10 @@ function togglePlaybackMode() {
 updatePlaybackModeIcon();
 
 // Event Listeners
-addMusicBtn.addEventListener('click', () => fileInput.click());
-
-// fileInput listener remains below...
+addMusicBtn.addEventListener('click', () => {
+    console.log('Add Music Clicked');
+    fileInput.click();
+});
 
 fileInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
@@ -612,6 +613,20 @@ fileInput.addEventListener('change', async (e) => {
     loadingOverlay.classList.add('hidden');
     fileInput.value = ''; // Reset
 });
+
+// Force Update Function
+window.forceUpdate = function () {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            for (let registration of registrations) {
+                registration.unregister();
+            }
+            window.location.reload(true);
+        });
+    } else {
+        window.location.reload(true);
+    }
+};
 
 playPauseBtn.addEventListener('click', togglePlayPause);
 modalPlayPauseBtn.addEventListener('click', togglePlayPause);
@@ -910,11 +925,10 @@ const cloudSyncBtn = document.getElementById('cloud-sync-btn');
 const cloudStatusMsg = document.getElementById('cloud-status-msg');
 const serviceInstructionEl = document.getElementById('service-instruction');
 
-<<<<<<< HEAD
 const DROPBOX_CLIENT_ID = 'nagv63g1i31287s';
 const GOOGLE_CLIENT_ID = '630507478394-0t48nkg5ni575t3p4u5ib74joa678640.apps.googleusercontent.com';
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-=======
+
 // Playlist DOM Elements
 const openPlaylistsBtn = document.getElementById('open-playlists-btn');
 const playlistManagerModal = document.getElementById('playlist-manager-modal');
@@ -1011,7 +1025,6 @@ async function handleDeletePlaylist(id, event) {
 // Manual Token Elements
 const toggleManualTokenBtn = document.getElementById('toggle-manual-token-btn');
 const cloudManualTokenInput = document.getElementById('cloud-manual-token');
->>>>>>> d8d61f9 (feat: Add playlist support and seek sliders)
 
 let cloudService = localStorage.getItem('cloud_service') || 'dropbox';
 let cloudFolderPath = localStorage.getItem('cloud_folder_path') || '/';
