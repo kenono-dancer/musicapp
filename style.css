@@ -522,26 +522,42 @@ button svg {
 .seek-marker {
     position: absolute;
     top: 0;
-    width: 1px;
-    height: 6px;
-    background: var(--text-secondary);
-    /* This is the vertical line */
+    /* Use flex to stack line and text cleanly */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: auto;
+    height: auto;
+    background: none;
+    /* Remove background line from container */
     transform: translateX(-50%);
+    pointer-events: none;
     color: transparent;
-    /* Hide any internal text that might be jamming the layout */
+    /* Hide internal text nodes if any */
 }
 
+/* The Vertical Line Tick */
+.seek-marker::before {
+    content: '';
+    display: block;
+    width: 1px;
+    height: 8px;
+    background-color: var(--text-secondary);
+    margin-bottom: 4px;
+    /* Space between line and text */
+}
+
+/* The Time Text */
 .seek-marker::after {
     content: attr(data-time);
-    position: absolute;
-    top: 20px;
-    /* Further increased to 20px to effectively eliminate overlap */
-    left: 50%;
-    transform: translateX(-50%);
+    display: block;
+    position: static;
+    /* Let it flow in flex container */
     font-size: 0.65rem;
     color: var(--text-secondary);
-    /* Text color restored here */
+    /* Visible text color */
     white-space: nowrap;
+    line-height: 1;
 }
 
 .modal-time-display {
