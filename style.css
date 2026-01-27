@@ -843,13 +843,16 @@ button {
 .playlist-item-count {
     font-size: 0.8rem;
     color: var(--text-secondary);
-}/* Static Player Panel (Modal) */
+}
+
+/* Static Player Panel (Modal) */
 .static-player-panel {
     width: 100%;
     max-width: 400px;
     background: var(--surface-color);
     border-radius: 16px;
-    padding: 24px;
+    padding: 16px;
+    /* Reduced from 24px */
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -875,4 +878,39 @@ button {
 /* Adjust seek slider in static panel if needed */
 .static-player-panel input[type=range] {
     margin: 8px 0;
+}
+
+/* Modal Specific Overrides for Tighter Fit on Mobile */
+#player-modal .controls-main {
+    gap: 4px;
+    /* Reduced from 12px */
+}
+
+#player-modal .control-btn.xs {
+    width: 40px;
+    /* Reduced from 48px */
+    font-size: 0.8rem;
+    padding: 0;
+}
+
+#player-modal .control-btn.lg {
+    width: 52px;
+    /* Slightly Reduced from 56px */
+    height: 52px;
+}
+
+/* Extra Tight for Small Screens (iPhone SE etc) */
+@media (max-width: 380px) {
+    .static-player-panel {
+        padding: 12px;
+        /* Even tighter */
+    }
+
+    #player-modal .control-btn.xs {
+        width: 36px;
+    }
+
+    #player-modal .control-btn.sm {
+        padding: 4px;
+    }
 }
