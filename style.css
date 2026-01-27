@@ -267,6 +267,35 @@ button svg {
     /* Center thumb on 4px track */
 }
 
+.seek-markers {
+    position: relative;
+    width: 100%;
+    height: 14px;
+    margin-top: 4px;
+    pointer-events: none;
+}
+
+.seek-marker {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+#marker-25 {
+    left: 25%;
+}
+
+#marker-50 {
+    left: 50%;
+}
+
+#marker-75 {
+    left: 75%;
+}
+
 .controls-main {
     display: flex;
     justify-content: center;
@@ -752,8 +781,44 @@ input:checked+.slider:before {
     opacity: 1;
 }
 
-\nbutton {
-    \n cursor: pointer;
-    \n touch-action: manipulation;
-    \n
+
+button {
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+/* Playlist Styles */
+.playlist-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.playlist-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.playlist-item:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.playlist-item-name {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.playlist-item-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    >>>>>>>d8d61f9 (feat: Add playlist support and seek sliders)
 }

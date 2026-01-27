@@ -49,6 +49,8 @@ let longPressTimer = null;
 let rewindInterval = null;
 let isLongPressing = false;
 
+let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
+
 // Format Time
 function formatTime(seconds) {
     if (isNaN(seconds)) return "0:00";
@@ -58,12 +60,16 @@ function formatTime(seconds) {
 }
 
 // Initialize IndexedDB
-const request = indexedDB.open('MusicPlayerDB', 2); // Increment to trigger upgrade if needed (though schema same)
+// Initialize IndexedDB
+const request = indexedDB.open('MusicPlayerDB', 3); // Increment to trigger upgrade
 
 request.onupgradeneeded = (e) => {
     db = e.target.result;
     if (!db.objectStoreNames.contains('songs')) {
         db.createObjectStore('songs', { keyPath: 'id', autoIncrement: true });
+    }
+    if (!db.objectStoreNames.contains('playlists')) {
+        db.createObjectStore('playlists', { keyPath: 'id', autoIncrement: true });
     }
 };
 
@@ -93,29 +99,52 @@ if (navigator.storage && navigator.storage.persist) {
 
 // Functions
 function loadSongs() {
-    const transaction = db.transaction(['songs'], 'readonly');
-    const store = transaction.objectStore('songs');
-    const getAllReq = store.getAll();
+    if (currentPlaylistId !== null) {
+        // Load Playlist
+        const transaction = db.transaction(['playlists', 'songs'], 'readonly');
+        const playlistStore = transaction.objectStore('playlists');
+        const songStore = transaction.objectStore('songs');
 
-    getAllReq.onsuccess = () => {
-        songs = getAllReq.result;
-        // Sort by 'order' if exists, otherwise by id
-        songs.sort((a, b) => {
-            const orderA = a.order !== undefined ? a.order : a.id;
-            const orderB = b.order !== undefined ? b.order : b.id;
-            return orderA - orderB;
-        });
-
-        // Normalize orders
-        songs.forEach((song, index) => {
-            if (song.order !== index) {
-                song.order = index;
-                // We could update DB here to be clean, but lazy update is fine
+        const plReq = playlistStore.get(currentPlaylistId);
+        plReq.onsuccess = () => {
+            const playlist = plReq.result;
+            if (!playlist) {
+                currentPlaylistId = null;
+                loadSongs();
+                return;
             }
-        });
 
-        renderSongList();
-    };
+            const allSongsReq = songStore.getAll();
+            allSongsReq.onsuccess = () => {
+                const allSongs = allSongsReq.result;
+                songs = allSongs.filter(s => playlist.songIds.includes(s.id));
+                songs.sort((a, b) => playlist.songIds.indexOf(a.id) - playlist.songIds.indexOf(b.id));
+                renderSongList();
+            };
+        };
+    } else {
+        // Load Library
+        const transaction = db.transaction(['songs'], 'readonly');
+        const store = transaction.objectStore('songs');
+        const getAllReq = store.getAll();
+
+        getAllReq.onsuccess = () => {
+            songs = getAllReq.result;
+            songs.sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : a.id;
+                const orderB = b.order !== undefined ? b.order : b.id;
+                return orderA - orderB;
+            });
+
+            songs.forEach((song, index) => {
+                if (song.order !== index) {
+                    song.order = index;
+                }
+            });
+
+            renderSongList();
+        };
+    }
 }
 
 function saveSong(file) {
@@ -152,9 +181,27 @@ function deleteSong(id, event) {
         currentSongIndex--;
     }
 
-    const transaction = db.transaction(['songs'], 'readwrite');
-    const store = transaction.objectStore('songs');
-    store.delete(id);
+    const transaction = db.transaction(['songs', 'playlists'], 'readwrite');
+    const songStore = transaction.objectStore('songs');
+    const playlistStore = transaction.objectStore('playlists');
+
+    // 1. Delete from Songs Store
+    songStore.delete(id);
+
+    // 2. Remove from all Playlists
+    const playlistReq = playlistStore.openCursor();
+    playlistReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+            const playlist = cursor.value;
+            if (playlist.songIds.includes(id)) {
+                playlist.songIds = playlist.songIds.filter(sid => sid !== id);
+                cursor.update(playlist);
+            }
+            cursor.continue();
+        }
+    };
+
     transaction.oncomplete = () => loadSongs();
 }
 
@@ -196,6 +243,7 @@ function renderSongList() {
         emptyState.classList.remove('hidden');
         playerBar.classList.add('hidden');
     } else {
+
         emptyState.classList.add('hidden');
         playerBar.classList.remove('hidden');
 
@@ -205,6 +253,7 @@ function renderSongList() {
 
             const isFirst = index === 0;
             const isLast = index === songs.length - 1;
+            const isPlaylistView = currentPlaylistId !== null;
 
             li.innerHTML = `
                 <div class="song-item-info">
@@ -214,14 +263,22 @@ function renderSongList() {
                     </div>
                 </div>
                 <div class="song-actions">
+                    <button class="add-to-playlist-btn" title="Add to Playlist" onclick="openAddToPlaylistModal(${song.id}, event)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                    ${!isPlaylistView ? `
                     <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5z"/></svg>
                     </button>
                     <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                     </button>
-                    <button class="delete-btn">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    ` : ''}
+                    <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}" onclick="${isPlaylistView ? `handleRemoveFromPlaylist(${currentPlaylistId}, ${song.id}, event)` : `deleteSong(${song.id}, event)`}">
+                        ${isPlaylistView
+                    ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+                    : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'}
+                    </button>
                     </button>
                 </div>
             `;
@@ -252,8 +309,42 @@ function renderSongList() {
 
             songList.appendChild(li);
         });
+
+        // Dynamic Height Calculation
+        requestAnimationFrame(adjustLibraryHeight);
     }
 }
+
+// Dynamic Library Height Adjustment to prevent overlap
+function adjustLibraryHeight() {
+    // Only adjust if player bar is visible
+    if (playerBar.classList.contains('hidden')) {
+        document.querySelector('main').style.height = 'auto';
+        document.querySelector('main').style.maxHeight = 'none';
+        document.querySelector('main').style.flex = '1';
+        return;
+    }
+
+    const playerRect = playerBar.getBoundingClientRect();
+    const mainRect = document.querySelector('main').getBoundingClientRect();
+    const versionFooterHeight = 40; // Approximate height of version footer if taking space, or safety margin
+
+    // Calculate available height: Top of player bar - Top of main content
+    // We add a safety buffer (e.g. 10px) to ensure no touch overlap
+    const availableHeight = playerRect.top - mainRect.top - 10;
+
+    if (availableHeight > 0) {
+        document.querySelector('main').style.flex = 'none';
+        document.querySelector('main').style.height = `${availableHeight}px`;
+        // Ensure overflow is handled by CSS (already set to overflow-y: auto)
+    }
+}
+
+// Listen for resize to re-calculate
+window.addEventListener('resize', adjustLibraryHeight);
+window.addEventListener('orientationchange', () => {
+    setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
+});
 
 function playSong(index) {
     if (index < 0 || index >= songs.length) return;
@@ -647,6 +738,7 @@ audio.addEventListener('timeupdate', () => {
         modalSeekSlider.value = percent;
         modalCurrentTime.textContent = formatTime(audio.currentTime);
     }
+    updateSeekMarkers();
 });
 
 seekSlider.addEventListener('input', () => {
@@ -659,6 +751,21 @@ seekSlider.addEventListener('input', () => {
 seekSlider.addEventListener('change', () => {
     isDraggingSeek = false;
 });
+
+// Update Seek Markers (25%, 50%, 75%)
+function updateSeekMarkers() {
+    const duration = audio.duration;
+    if (isNaN(duration) || duration === 0) {
+        document.getElementById('marker-25').textContent = '';
+        document.getElementById('marker-50').textContent = '';
+        document.getElementById('marker-75').textContent = '';
+        return;
+    }
+
+    document.getElementById('marker-25').textContent = formatTime(duration * 0.25);
+    document.getElementById('marker-50').textContent = formatTime(duration * 0.50);
+    document.getElementById('marker-75').textContent = formatTime(duration * 0.75);
+}
 
 // Modal & Settings
 expandControlsBtn.addEventListener('click', () => {
@@ -803,9 +910,108 @@ const cloudSyncBtn = document.getElementById('cloud-sync-btn');
 const cloudStatusMsg = document.getElementById('cloud-status-msg');
 const serviceInstructionEl = document.getElementById('service-instruction');
 
+<<<<<<< HEAD
 const DROPBOX_CLIENT_ID = 'nagv63g1i31287s';
 const GOOGLE_CLIENT_ID = '630507478394-0t48nkg5ni575t3p4u5ib74joa678640.apps.googleusercontent.com';
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+=======
+// Playlist DOM Elements
+const openPlaylistsBtn = document.getElementById('open-playlists-btn');
+const playlistManagerModal = document.getElementById('playlist-manager-modal');
+const closePlaylistManagerBtn = document.getElementById('close-playlist-manager-btn');
+const newPlaylistNameInput = document.getElementById('new-playlist-name');
+const createPlaylistBtn = document.getElementById('create-playlist-btn');
+const playlistList = document.getElementById('playlist-list');
+const addToPlaylistModal = document.getElementById('add-to-playlist-modal');
+const closeAddToPlaylistBtn = document.getElementById('close-add-to-playlist-btn');
+const selectPlaylistList = document.getElementById('select-playlist-list');
+
+let songToAddId = null; // Track which song to add
+
+// Event Listeners (Playlist)
+openPlaylistsBtn.addEventListener('click', () => {
+    openPlaylistManager();
+});
+
+closePlaylistManagerBtn.addEventListener('click', () => {
+    playlistManagerModal.classList.add('hidden');
+});
+
+createPlaylistBtn.addEventListener('click', async () => {
+    const name = newPlaylistNameInput.value.trim();
+    if (name) {
+        await createPlaylist(name);
+        newPlaylistNameInput.value = '';
+        renderPlaylistManagerList();
+    }
+});
+
+closeAddToPlaylistBtn.addEventListener('click', () => {
+    addToPlaylistModal.classList.add('hidden');
+});
+
+function openPlaylistManager() {
+    playlistManagerModal.classList.remove('hidden');
+    renderPlaylistManagerList();
+}
+
+async function renderPlaylistManagerList() {
+    playlistList.innerHTML = '';
+    const playlists = await getPlaylists();
+
+    // Add "Library" option
+    const libLi = document.createElement('li');
+    libLi.className = 'playlist-item';
+    libLi.innerHTML = `
+        <span class="playlist-item-name">My Music (Library)</span>
+        <span class="playlist-item-count">All</span>
+    `;
+    libLi.style.borderLeft = currentPlaylistId === null ? '4px solid var(--primary-color)' : 'none';
+    libLi.onclick = () => {
+        currentPlaylistId = null;
+        document.querySelector('header h1').textContent = 'My Music';
+        loadSongs();
+        playlistManagerModal.classList.add('hidden');
+    };
+    playlistList.appendChild(libLi);
+
+    playlists.forEach(pl => {
+        const li = document.createElement('li');
+        li.className = 'playlist-item';
+        li.innerHTML = `
+            <span class="playlist-item-name">${pl.name}</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="playlist-item-count">${pl.songIds.length} songs</span>
+                <button class="delete-btn" style="padding: 4px;" onclick="handleDeletePlaylist(${pl.id}, event)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </div>
+        `;
+        li.style.borderLeft = currentPlaylistId === pl.id ? '4px solid var(--primary-color)' : 'none';
+
+        li.onclick = (e) => {
+            if (e.target.closest('button')) return; // Ignore delete
+            currentPlaylistId = pl.id;
+            document.querySelector('header h1').textContent = pl.name;
+            loadSongs();
+            playlistManagerModal.classList.add('hidden');
+        };
+        playlistList.appendChild(li);
+    });
+}
+
+async function handleDeletePlaylist(id, event) {
+    event.stopPropagation();
+    if (confirm('Delete this playlist?')) {
+        await deletePlaylist(id);
+        renderPlaylistManagerList();
+    }
+}
+
+// Manual Token Elements
+const toggleManualTokenBtn = document.getElementById('toggle-manual-token-btn');
+const cloudManualTokenInput = document.getElementById('cloud-manual-token');
+>>>>>>> d8d61f9 (feat: Add playlist support and seek sliders)
 
 let cloudService = localStorage.getItem('cloud_service') || 'dropbox';
 let cloudFolderPath = localStorage.getItem('cloud_folder_path') || '/';
@@ -1088,4 +1294,129 @@ async function syncGoogleDrive() {
 
     loadSongs();
     cloudStatusMsg.textContent = `Synced ${addedCount} songs.`;
+}
+
+// ==========================================
+// Playlist Logic
+// ==========================================
+
+function createPlaylist(name) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['playlists'], 'readwrite');
+        const store = transaction.objectStore('playlists');
+        const playlist = {
+            name: name,
+            songIds: [],
+            dateCreated: new Date()
+        };
+        const req = store.add(playlist);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function getPlaylists() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['playlists'], 'readonly');
+        const store = transaction.objectStore('playlists');
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function deletePlaylist(id) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['playlists'], 'readwrite');
+        const store = transaction.objectStore('playlists');
+        const req = store.delete(id);
+        req.onsuccess = () => {
+            if (currentPlaylistId === id) {
+                currentPlaylistId = null; // Go back to library
+                loadSongs();
+            }
+            resolve();
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function addToPlaylist(playlistId, songId) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['playlists'], 'readwrite');
+        const store = transaction.objectStore('playlists');
+        const req = store.get(playlistId);
+
+        req.onsuccess = () => {
+            const playlist = req.result;
+            if (!playlist) return reject('Playlist not found');
+
+            if (!playlist.songIds.includes(songId)) {
+                playlist.songIds.push(songId);
+                store.put(playlist).onsuccess = () => resolve();
+            } else {
+                resolve(); // Already in playlist
+            }
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function removeFromPlaylist(playlistId, songId) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['playlists'], 'readwrite');
+        const store = transaction.objectStore('playlists');
+        const req = store.get(playlistId);
+
+        req.onsuccess = () => {
+            const playlist = req.result;
+            if (!playlist) return reject('Playlist not found');
+
+            playlist.songIds = playlist.songIds.filter(id => id !== songId);
+            const putReq = store.put(playlist);
+
+            putReq.onsuccess = () => {
+                // If we are currently viewing this playlist, refresh logic might be needed
+                // But for now just resolve
+                resolve();
+            };
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function handleRemoveFromPlaylist(playlistId, songId, event) {
+    event.stopPropagation();
+    if (confirm('Remove from this playlist?')) {
+        await removeFromPlaylist(playlistId, songId);
+        loadSongs(); // Reload playlist view
+    }
+}
+
+function openAddToPlaylistModal(songId, event) {
+    event.stopPropagation();
+    songToAddId = songId;
+    addToPlaylistModal.classList.remove('hidden');
+    renderAddToPlaylistList();
+}
+
+async function renderAddToPlaylistList() {
+    selectPlaylistList.innerHTML = '';
+    const playlists = await getPlaylists();
+    playlists.forEach(pl => {
+        const li = document.createElement('li');
+        li.className = 'playlist-item';
+        li.innerHTML = `
+            <span class="playlist-item-name">${pl.name}</span>
+            <span class="playlist-item-count">${pl.songIds.length} songs</span>
+        `;
+        li.onclick = async () => {
+            await addToPlaylist(pl.id, songToAddId);
+            addToPlaylistModal.classList.add('hidden');
+            songToAddId = null;
+            // Simple toast feedback
+            alert(`Added to ${pl.name}`);
+        };
+        selectPlaylistList.appendChild(li);
+    });
 }
