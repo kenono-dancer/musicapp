@@ -238,13 +238,12 @@ button svg {
     width: 100%;
     appearance: none;
     -webkit-appearance: none;
-    height: 60px;
-    /* Extra Large Touch Target */
-    /* Larger hit area */
+    height: 30px;
+    /* Reduced from 60px to decrease gap */
     background: transparent;
-    /* Container is transparent */
     outline: none;
-    margin: 8px 0;
+    margin: 4px 0 0 0;
+    /* Reduced margin */
 }
 
 /* Track approximation */
@@ -271,8 +270,8 @@ button svg {
     position: relative;
     width: 100%;
     height: 14px;
-    margin-top: -2px;
-    /* Pull closer to slider */
+    margin-top: -10px;
+    /* Pull significantly closer to slider */
     pointer-events: none;
 }
 
