@@ -266,14 +266,12 @@ function renderSongList() {
                     <button class="add-to-playlist-btn" title="Add to Playlist" onclick="openAddToPlaylistModal(${song.id}, event)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
-                    ${!isPlaylistView ? `
-                    <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''}>
+                    <button class="reorder-btn move-up" onclick="${isPlaylistView ? `movePlaylistSong(${index}, -1, event)` : `moveSong(${index}, -1, event)`}" ${isFirst ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5z"/></svg>
                     </button>
-                    <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''}>
+                    <button class="reorder-btn move-down" onclick="${isPlaylistView ? `movePlaylistSong(${index}, 1, event)` : `moveSong(${index}, 1, event)`}" ${isLast ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                     </button>
-                    ` : ''}
                     <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}" onclick="${isPlaylistView ? `handleRemoveFromPlaylist(${currentPlaylistId}, ${song.id}, event)` : `deleteSong(${song.id}, event)`}">
                         ${isPlaylistView
                     ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
@@ -992,9 +990,14 @@ async function renderPlaylistManagerList() {
             <span class="playlist-item-name">${pl.name}</span>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <span class="playlist-item-count">${pl.songIds.length} songs</span>
-                <button class="delete-btn" style="padding: 4px;" onclick="handleDeletePlaylist(${pl.id}, event)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+                <div style="display: flex;">
+                    <button class="delete-btn" style="padding: 6px; margin-right: 4px;" onclick="handleRenamePlaylist(${pl.id}, '${pl.name.replace(/'/g, "\\'")}', event)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button class="delete-btn" style="padding: 6px;" onclick="handleDeletePlaylist(${pl.id}, event)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </div>
             </div>
         `;
         li.style.borderLeft = currentPlaylistId === pl.id ? '4px solid var(--primary-color)' : 'none';
@@ -1411,6 +1414,27 @@ function openAddToPlaylistModal(songId, event) {
 
 async function renderAddToPlaylistList() {
     selectPlaylistList.innerHTML = '';
+
+    // Add "Create New" option
+    const createLi = document.createElement('li');
+    createLi.className = 'playlist-item';
+    createLi.style.background = 'rgba(0, 97, 254, 0.1)';
+    createLi.style.justifyContent = 'center';
+    createLi.innerHTML = `
+        <span style="color: var(--primary-color); font-weight: 600;">+ Create New & Add</span>
+    `;
+    createLi.onclick = async () => {
+        const name = prompt('New Playlist Name:');
+        if (name && name.trim()) {
+            const newId = await createPlaylist(name.trim());
+            await addToPlaylist(newId, songToAddId);
+            addToPlaylistModal.classList.add('hidden');
+            songToAddId = null;
+            alert(`Created "${name}" and added song.`);
+        }
+    };
+    selectPlaylistList.appendChild(createLi);
+
     const playlists = await getPlaylists();
     playlists.forEach(pl => {
         const li = document.createElement('li');
@@ -1428,4 +1452,47 @@ async function renderAddToPlaylistList() {
         };
         selectPlaylistList.appendChild(li);
     });
+}
+
+function handleRenamePlaylist(id, currentName, event) {
+    event.stopPropagation();
+    const newName = prompt('Enter new playlist name:', currentName);
+    if (newName && newName.trim() !== '') {
+        const transaction = db.transaction(['playlists'], 'readwrite');
+        const store = transaction.objectStore('playlists');
+        const req = store.get(id);
+        req.onsuccess = () => {
+            const data = req.result;
+            data.name = newName.trim();
+            store.put(data).onsuccess = () => {
+                renderPlaylistManagerList();
+            };
+        };
+    }
+}
+
+function movePlaylistSong(index, direction, event) {
+    event.stopPropagation();
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= songs.length) return;
+
+    const transaction = db.transaction(['playlists'], 'readwrite');
+    const store = transaction.objectStore('playlists');
+    const req = store.get(currentPlaylistId);
+
+    req.onsuccess = () => {
+        const playlist = req.result;
+        if (!playlist) return;
+
+        const songIds = playlist.songIds;
+        // The 'songs' array is sorted by the order in playlist.songIds
+        // So we can swap the IDs at 'index' and 'newIndex' directly
+
+        const temp = songIds[index];
+        songIds[index] = songIds[newIndex];
+        songIds[newIndex] = temp;
+
+        playlist.songIds = songIds;
+        store.put(playlist).onsuccess = () => loadSongs();
+    };
 }

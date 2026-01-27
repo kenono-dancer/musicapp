@@ -271,7 +271,8 @@ button svg {
     position: relative;
     width: 100%;
     height: 14px;
-    margin-top: 4px;
+    margin-top: -2px;
+    /* Pull closer to slider */
     pointer-events: none;
 }
 
@@ -820,5 +821,4 @@ button {
 .playlist-item-count {
     font-size: 0.8rem;
     color: var(--text-secondary);
-    >>>>>>>d8d61f9 (feat: Add playlist support and seek sliders)
 }
