@@ -602,31 +602,27 @@ fileInput.addEventListener('change', async (e) => {
     const total = files.length;
     loadingOverlay.querySelector('p').textContent = `Loading 0/${total}...`;
 
-    // Process sequentially to maintain order and not freeze UI too much
-    for (const file of files) {
-        await saveSong(file);
-        loadedCount++;
-        loadingOverlay.querySelector('p').textContent = `Loading ${loadedCount}/${total}...`;
-    }
-
-    loadSongs(); // Reload list once
-    loadingOverlay.classList.add('hidden');
-    fileInput.value = ''; // Reset
-});
-
-// Force Update Function
-window.forceUpdate = function () {
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-            for (let registration of registrations) {
-                registration.unregister();
+    try {
+        // Process sequentially to maintain order and not freeze UI too much
+        for (const file of files) {
+            try {
+                await saveSong(file);
+                loadedCount++;
+                loadingOverlay.querySelector('p').textContent = `Loading ${loadedCount}/${total}...`;
+            } catch (err) {
+                console.error('Failed to save song:', file.name, err);
+                // Continue loading other files even if one fails
             }
-            window.location.reload(true);
-        });
-    } else {
-        window.location.reload(true);
+        }
+        await loadSongs(); // Reload list once
+    } catch (error) {
+        console.error('Batch import failed:', error);
+        alert('Failed to import some files.');
+    } finally {
+        loadingOverlay.classList.add('hidden');
+        fileInput.value = ''; // Reset
     }
-};
+});
 
 playPauseBtn.addEventListener('click', togglePlayPause);
 modalPlayPauseBtn.addEventListener('click', togglePlayPause);
