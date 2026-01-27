@@ -877,7 +877,10 @@ button {
 
 /* Adjust seek slider in static panel if needed */
 .static-player-panel input[type=range] {
-    margin: 8px 0;
+    margin: 0;
+    height: 48px;
+    /* Large touch target */
+    cursor: pointer;
 }
 
 /* Modal Specific Overrides for Tighter Fit on Mobile */

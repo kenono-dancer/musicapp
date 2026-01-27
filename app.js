@@ -899,13 +899,46 @@ speedSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); },
 speedSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
 
 // Modal Seek Slider
-modalSeekSlider.addEventListener('input', () => {
-    const time = (modalSeekSlider.value / 100) * audio.duration;
+// Modal Seek Slider logic with Tap-to-Seek support
+function handleModalSeekTouch(e) {
+    if (!audio.duration) return;
+
+    // Prevent default to stop scrolling/native behavior
+    e.preventDefault();
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const rect = modalSeekSlider.getBoundingClientRect();
+    let x = touch.clientX - rect.left;
+
+    // Clamp
+    if (x < 0) x = 0;
+    if (x > rect.width) x = rect.width;
+
+    const percent = (x / rect.width) * 100;
+
+    // Update State
+    isDraggingSeek = true;
+    modalSeekSlider.value = percent;
+
+    const time = (percent / 100) * audio.duration;
     audio.currentTime = time;
     modalCurrentTime.textContent = formatTime(time);
+}
+
+modalSeekSlider.addEventListener('input', () => {
+    isDraggingSeek = true;
+    const time = (modalSeekSlider.value / 100) * audio.duration;
+    modalCurrentTime.textContent = formatTime(time);
+    audio.currentTime = time;
 });
-modalSeekSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
-modalSeekSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+
+// Attach Touch Listeners for Tap-to-Seek
+modalSeekSlider.addEventListener('touchstart', handleModalSeekTouch, { passive: false });
+modalSeekSlider.addEventListener('touchmove', handleModalSeekTouch, { passive: false });
+modalSeekSlider.addEventListener('touchend', () => {
+    isDraggingSeek = false;
+}, { passive: false });
 
 // Skip Time
 window.skipTime = function (seconds) {
