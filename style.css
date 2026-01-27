@@ -532,8 +532,10 @@ button svg {
     /* Remove background line from container */
     transform: translateX(-50%);
     pointer-events: none;
-    color: transparent;
-    /* Hide internal text nodes if any */
+    color: var(--text-secondary);
+    /* Restore text visibility */
+    font-size: 0.65rem;
+    line-height: 1;
 }
 
 /* The Vertical Line Tick */
