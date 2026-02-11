@@ -42,6 +42,7 @@ let db;
 let audio = new Audio();
 let songs = [];
 let currentSongIndex = -1;
+let currentObjectURL = null; // Track current blob URL for cleanup
 let isDraggingSeek = false;
 let playbackMode = 'all'; // 'all' (Loop All), 'one' (Loop One), 'single' (Stop)
 let lastBackPressTime = 0;
@@ -99,52 +100,56 @@ if (navigator.storage && navigator.storage.persist) {
 
 // Functions
 function loadSongs() {
-    if (currentPlaylistId !== null) {
-        // Load Playlist
-        const transaction = db.transaction(['playlists', 'songs'], 'readonly');
-        const playlistStore = transaction.objectStore('playlists');
-        const songStore = transaction.objectStore('songs');
+    return new Promise((resolve) => {
+        if (currentPlaylistId !== null) {
+            // Load Playlist
+            const transaction = db.transaction(['playlists', 'songs'], 'readonly');
+            const playlistStore = transaction.objectStore('playlists');
+            const songStore = transaction.objectStore('songs');
 
-        const plReq = playlistStore.get(currentPlaylistId);
-        plReq.onsuccess = () => {
-            const playlist = plReq.result;
-            if (!playlist) {
-                currentPlaylistId = null;
-                loadSongs();
-                return;
-            }
-
-            const allSongsReq = songStore.getAll();
-            allSongsReq.onsuccess = () => {
-                const allSongs = allSongsReq.result;
-                songs = allSongs.filter(s => playlist.songIds.includes(s.id));
-                songs.sort((a, b) => playlist.songIds.indexOf(a.id) - playlist.songIds.indexOf(b.id));
-                renderSongList();
-            };
-        };
-    } else {
-        // Load Library
-        const transaction = db.transaction(['songs'], 'readonly');
-        const store = transaction.objectStore('songs');
-        const getAllReq = store.getAll();
-
-        getAllReq.onsuccess = () => {
-            songs = getAllReq.result;
-            songs.sort((a, b) => {
-                const orderA = a.order !== undefined ? a.order : a.id;
-                const orderB = b.order !== undefined ? b.order : b.id;
-                return orderA - orderB;
-            });
-
-            songs.forEach((song, index) => {
-                if (song.order !== index) {
-                    song.order = index;
+            const plReq = playlistStore.get(currentPlaylistId);
+            plReq.onsuccess = () => {
+                const playlist = plReq.result;
+                if (!playlist) {
+                    currentPlaylistId = null;
+                    loadSongs().then(resolve);
+                    return;
                 }
-            });
 
-            renderSongList();
-        };
-    }
+                const allSongsReq = songStore.getAll();
+                allSongsReq.onsuccess = () => {
+                    const allSongs = allSongsReq.result;
+                    songs = allSongs.filter(s => playlist.songIds.includes(s.id));
+                    songs.sort((a, b) => playlist.songIds.indexOf(a.id) - playlist.songIds.indexOf(b.id));
+                    renderSongList();
+                    resolve();
+                };
+            };
+        } else {
+            // Load Library
+            const transaction = db.transaction(['songs'], 'readonly');
+            const store = transaction.objectStore('songs');
+            const getAllReq = store.getAll();
+
+            getAllReq.onsuccess = () => {
+                songs = getAllReq.result;
+                songs.sort((a, b) => {
+                    const orderA = a.order !== undefined ? a.order : a.id;
+                    const orderB = b.order !== undefined ? b.order : b.id;
+                    return orderA - orderB;
+                });
+
+                songs.forEach((song, index) => {
+                    if (song.order !== index) {
+                        song.order = index;
+                    }
+                });
+
+                renderSongList();
+                resolve();
+            };
+        }
+    });
 }
 
 function saveSong(file) {
@@ -263,39 +268,43 @@ function renderSongList() {
                     </div>
                 </div>
                 <div class="song-actions">
-                    <button class="add-to-playlist-btn" title="Add to Playlist" onclick="openAddToPlaylistModal(${song.id}, event)">
+                    <button class="add-to-playlist-btn" title="Add to Playlist">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
-                    <button class="reorder-btn move-up" onclick="${isPlaylistView ? `movePlaylistSong(${index}, -1, event)` : `moveSong(${index}, -1, event)`}" ${isFirst ? 'disabled' : ''}>
+                    <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5z"/></svg>
                     </button>
-                    <button class="reorder-btn move-down" onclick="${isPlaylistView ? `movePlaylistSong(${index}, 1, event)` : `moveSong(${index}, 1, event)`}" ${isLast ? 'disabled' : ''}>
+                    <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                     </button>
-                    <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}" onclick="${isPlaylistView ? `handleRemoveFromPlaylist(${currentPlaylistId}, ${song.id}, event)` : `deleteSong(${song.id}, event)`}">
+                    <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}">
                         ${isPlaylistView
                     ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
                     : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'}
-                    </button>
                     </button>
                 </div>
             `;
 
             // Attach Listeners
+            const addToPlBtn = li.querySelector('.add-to-playlist-btn');
             const moveUpBtn = li.querySelector('.move-up');
             const moveDownBtn = li.querySelector('.move-down');
             const deleteBtn = li.querySelector('.delete-btn');
 
+            if (addToPlBtn) {
+                addToPlBtn.addEventListener('click', (e) => openAddToPlaylistModal(song.id, e));
+                addToPlBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            }
             if (moveUpBtn) {
-                moveUpBtn.addEventListener('click', (e) => moveSong(index, -1, e));
+                moveUpBtn.addEventListener('click', (e) => isPlaylistView ? movePlaylistSong(index, -1, e) : moveSong(index, -1, e));
                 moveUpBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
             }
             if (moveDownBtn) {
-                moveDownBtn.addEventListener('click', (e) => moveSong(index, 1, e));
+                moveDownBtn.addEventListener('click', (e) => isPlaylistView ? movePlaylistSong(index, 1, e) : moveSong(index, 1, e));
                 moveDownBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
             }
             if (deleteBtn) {
-                deleteBtn.addEventListener('click', (e) => deleteSong(song.id, e));
+                deleteBtn.addEventListener('click', (e) => isPlaylistView ? handleRemoveFromPlaylist(currentPlaylistId, song.id, e) : deleteSong(song.id, e));
                 deleteBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
             }
 
@@ -350,10 +359,13 @@ function playSong(index) {
     currentSongIndex = index;
     const song = songs[index];
 
-    // Revoke previous object URL to avoid leaks? 
-    // Usually browser handles it, but good practice if we were creating many.
-    // For simplicity, we just create new one.
+    // Revoke previous object URL to prevent memory leaks
+    if (currentObjectURL) {
+        URL.revokeObjectURL(currentObjectURL);
+        currentObjectURL = null;
+    }
     const url = URL.createObjectURL(song.blob);
+    currentObjectURL = url;
 
     audio.src = url;
     audio.play()
@@ -490,14 +502,13 @@ function updateSpeed(saveToDB = true) {
         const transaction = db.transaction(['songs'], 'readwrite');
         const store = transaction.objectStore('songs');
         store.put(song);
-
-        // Update list badge logic immediately (optional, or wait for render)
-        // renderSongList(); // Might be heavy to re-render whole list on slider drag. 
-        // Better: update visible badge only? 
-        // For now, let's re-render on 'change' (drag end) instead of input?
-        // Or just re-render. List is small.
-        renderSongList();
     }
+}
+
+// Separate function to re-render list only on drag end
+function updateSpeedAndRender() {
+    updateSpeed(true);
+    renderSongList();
 }
 
 function updatePitchPreservation(saveToDB = true) {
@@ -691,6 +702,7 @@ function stopRewind() {
     clearTimeout(longPressTimer);
     clearInterval(rewindInterval);
     if (rewindInterval) {
+        rewindInterval = null; // Clear before return
         // prevent click
         setTimeout(() => { isLongPressing = false; }, 50);
         return true; // Was long press
@@ -698,7 +710,6 @@ function stopRewind() {
         isLongPressing = false;
         return false; // Was short press
     }
-    rewindInterval = null;
 }
 
 function handleBackTouchEnd(e) {
@@ -775,6 +786,7 @@ if (modalSkipFwdBtn) {
     });
 }
 
+// First modal seek slider listeners (desktop)
 modalSeekSlider.addEventListener('input', () => {
     isDraggingSeek = true;
     const time = (modalSeekSlider.value / 100) * audio.duration;
@@ -841,7 +853,8 @@ closeSettingsBtn.addEventListener('click', () => {
     settingsView.classList.add('hidden');
 });
 
-speedSlider.addEventListener('input', () => updateSpeed(true));
+speedSlider.addEventListener('input', () => updateSpeed(false)); // UI only during drag
+speedSlider.addEventListener('change', () => updateSpeedAndRender()); // Save + re-render on drag end
 resetSpeedBtn.addEventListener('click', () => {
     speedSlider.value = 1.0;
     updateSpeed();
@@ -852,12 +865,12 @@ playbackModeBtn.addEventListener('click', togglePlaybackMode);
 
 // Mobile: Prevent Pull-to-Refresh
 document.body.addEventListener('touchmove', function (e) {
-    // Allow range sliders to work - Fallback check
+    // Allow range sliders to work
     if (e.target.closest('input[type="range"]')) return;
+    // Allow scrollable areas (library, modals) to scroll normally
+    if (e.target.closest('#library-view') || e.target.closest('.modal-content') || e.target.closest('.playlist-list')) return;
     e.preventDefault();
 }, { passive: false });
-document.getElementById('library-view').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
-document.querySelector('.modal-content').addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 
 // Fix sliders on mobile - Explicit isolation
 // Custom Seek Logic for Mobile (Tap/Drag Anywhere)
@@ -926,14 +939,7 @@ function handleModalSeekTouch(e) {
     modalCurrentTime.textContent = formatTime(time);
 }
 
-modalSeekSlider.addEventListener('input', () => {
-    isDraggingSeek = true;
-    const time = (modalSeekSlider.value / 100) * audio.duration;
-    modalCurrentTime.textContent = formatTime(time);
-    audio.currentTime = time;
-});
-
-// Attach Touch Listeners for Tap-to-Seek
+// Attach Touch Listeners for Tap-to-Seek (duplicate input listener removed)
 modalSeekSlider.addEventListener('touchstart', handleModalSeekTouch, { passive: false });
 modalSeekSlider.addEventListener('touchmove', handleModalSeekTouch, { passive: false });
 modalSeekSlider.addEventListener('touchend', () => {
