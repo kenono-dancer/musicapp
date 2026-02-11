@@ -562,25 +562,25 @@ const ICON_SINGLE = `
 // Arrow right to bar (Skip/Stop icon like)
 
 function updatePlaybackModeIcon() {
-    const modalPlaybackModeBtn = document.getElementById('modal-playback-mode-toggle');
+    const modalPlaybackModeIcon = document.getElementById('modal-playback-mode-icon');
     const modalPlaybackModeLabel = document.getElementById('modal-playback-mode-label');
 
     if (playbackMode === 'all') {
         playbackModeBtn.innerHTML = ICON_LOOP_ALL;
         playbackModeBtn.style.color = 'var(--primary-color)';
         playbackModeBtn.style.opacity = '1';
-        if (modalPlaybackModeBtn) {
-            modalPlaybackModeBtn.innerHTML = ICON_LOOP_ALL;
-            modalPlaybackModeBtn.style.color = 'var(--primary-color)';
+        if (modalPlaybackModeIcon) {
+            modalPlaybackModeIcon.innerHTML = ICON_LOOP_ALL;
+            modalPlaybackModeIcon.style.color = 'var(--primary-color)';
         }
         if (modalPlaybackModeLabel) modalPlaybackModeLabel.textContent = 'Loop All';
     } else if (playbackMode === 'one') {
         playbackModeBtn.innerHTML = ICON_LOOP_ONE;
         playbackModeBtn.style.color = 'var(--primary-color)';
         playbackModeBtn.style.opacity = '1';
-        if (modalPlaybackModeBtn) {
-            modalPlaybackModeBtn.innerHTML = ICON_LOOP_ONE;
-            modalPlaybackModeBtn.style.color = 'var(--primary-color)';
+        if (modalPlaybackModeIcon) {
+            modalPlaybackModeIcon.innerHTML = ICON_LOOP_ONE;
+            modalPlaybackModeIcon.style.color = 'var(--primary-color)';
         }
         if (modalPlaybackModeLabel) modalPlaybackModeLabel.textContent = 'Loop One';
     } else {
@@ -588,9 +588,9 @@ function updatePlaybackModeIcon() {
         playbackModeBtn.innerHTML = ICON_SINGLE;
         playbackModeBtn.style.color = 'var(--text-secondary)';
         playbackModeBtn.style.opacity = '0.7';
-        if (modalPlaybackModeBtn) {
-            modalPlaybackModeBtn.innerHTML = ICON_SINGLE;
-            modalPlaybackModeBtn.style.color = 'var(--text-secondary)';
+        if (modalPlaybackModeIcon) {
+            modalPlaybackModeIcon.innerHTML = ICON_SINGLE;
+            modalPlaybackModeIcon.style.color = 'var(--text-secondary)';
         }
         if (modalPlaybackModeLabel) modalPlaybackModeLabel.textContent = 'Stop After';
     }
