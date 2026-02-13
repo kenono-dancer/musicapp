@@ -52,30 +52,12 @@ let isLongPressing = false;
 
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
-// Web Audio API for iOS quality
-let audioContext = null;
-let sourceNode = null;
-
 // Format Time
 function formatTime(seconds) {
     if (isNaN(seconds)) return "0:00";
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-// Initialize AudioContext for iOS audio quality
-function initAudioContext() {
-    if (audioContext) return;
-    try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        audioContext = new AC();
-        sourceNode = audioContext.createMediaElementSource(audio);
-        sourceNode.connect(audioContext.destination);
-        console.log('AudioContext initialized, sampleRate:', audioContext.sampleRate);
-    } catch (e) {
-        console.warn('AudioContext init failed:', e);
-    }
 }
 
 // Initialize IndexedDB
@@ -393,12 +375,6 @@ function playSong(index) {
         currentObjectURL = audioUrl;
     }
 
-    // Initialize AudioContext on first play (iOS requires user gesture)
-    initAudioContext();
-    if (audioContext && audioContext.state === 'suspended') {
-        audioContext.resume();
-    }
-
     audio.src = audioUrl;
     audio.play()
         .then(() => updatePlayPauseUI(true))
@@ -469,10 +445,6 @@ function generateSeekMarkers() {
 
 function togglePlayPause() {
     if (audio.paused) {
-        // Resume AudioContext if suspended (iOS requirement)
-        if (audioContext && audioContext.state === 'suspended') {
-            audioContext.resume();
-        }
         if (currentSongIndex === -1 && songs.length > 0) playSong(0);
         else audio.play();
     } else {
