@@ -69,7 +69,7 @@ function initAudioContext() {
     if (audioContext) return;
     try {
         const AC = window.AudioContext || window.webkitAudioContext;
-        audioContext = new AC({ sampleRate: 44100 });
+        audioContext = new AC();
         sourceNode = audioContext.createMediaElementSource(audio);
         sourceNode.connect(audioContext.destination);
         console.log('AudioContext initialized, sampleRate:', audioContext.sampleRate);
@@ -382,8 +382,16 @@ function playSong(index) {
         URL.revokeObjectURL(currentObjectURL);
         currentObjectURL = null;
     }
-    const url = URL.createObjectURL(song.blob);
-    currentObjectURL = url;
+
+    // Use Service Worker URL for iOS audio quality (Range Request support)
+    // Fall back to blob URL if SW is not available
+    let audioUrl;
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        audioUrl = `audio/${song.id}`;
+    } else {
+        audioUrl = URL.createObjectURL(song.blob);
+        currentObjectURL = audioUrl;
+    }
 
     // Initialize AudioContext on first play (iOS requires user gesture)
     initAudioContext();
@@ -391,7 +399,7 @@ function playSong(index) {
         audioContext.resume();
     }
 
-    audio.src = url;
+    audio.src = audioUrl;
     audio.play()
         .then(() => updatePlayPauseUI(true))
         .catch(e => console.error("Playback failed", e));
