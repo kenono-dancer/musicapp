@@ -255,6 +255,7 @@ function renderSongList() {
         songs.forEach((song, index) => {
             const li = document.createElement('li');
             li.className = `song-item ${index === currentSongIndex ? 'active' : ''}`;
+            li.setAttribute('data-index', index);
 
             const isFirst = index === 0;
             const isLast = index === songs.length - 1;
@@ -285,33 +286,11 @@ function renderSongList() {
                 </div>
             `;
 
-            // Attach Listeners
-            const addToPlBtn = li.querySelector('.add-to-playlist-btn');
-            const moveUpBtn = li.querySelector('.move-up');
-            const moveDownBtn = li.querySelector('.move-down');
-            const deleteBtn = li.querySelector('.delete-btn');
-
-            if (addToPlBtn) {
-                addToPlBtn.addEventListener('click', (e) => openAddToPlaylistModal(song.id, e));
-                addToPlBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-            }
-            if (moveUpBtn) {
-                moveUpBtn.addEventListener('click', (e) => isPlaylistView ? movePlaylistSong(index, -1, e) : moveSong(index, -1, e));
-                moveUpBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-            }
-            if (moveDownBtn) {
-                moveDownBtn.addEventListener('click', (e) => isPlaylistView ? movePlaylistSong(index, 1, e) : moveSong(index, 1, e));
-                moveDownBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-            }
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', (e) => isPlaylistView ? handleRemoveFromPlaylist(currentPlaylistId, song.id, e) : deleteSong(song.id, e));
-                deleteBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-            }
-
+            // Click handler for playing song (not on buttons)
             li.addEventListener('click', (e) => {
-                // Ignore clicks on buttons (handled above with stopPropagation ideally, but explicit check is safer if stopPropagation missed)
                 if (e.target.closest('button')) return;
-                playSong(index);
+                const idx = parseInt(li.getAttribute('data-index'));
+                playSong(idx);
             });
 
             songList.appendChild(li);
@@ -321,6 +300,41 @@ function renderSongList() {
         requestAnimationFrame(adjustLibraryHeight);
     }
 }
+
+// Event Delegation for Song List Buttons
+// This prevents duplicate event listeners when renderSongList() is called multiple times
+songList.addEventListener('click', (e) => {
+    const button = e.target.closest('button');
+    if (!button) return;
+
+    const songItem = button.closest('.song-item');
+    if (!songItem) return;
+
+    const index = parseInt(songItem.getAttribute('data-index'));
+    if (isNaN(index)) return;
+
+    const song = songs[index];
+    if (!song) return;
+
+    const isPlaylistView = currentPlaylistId !== null;
+
+    if (button.classList.contains('add-to-playlist-btn')) {
+        openAddToPlaylistModal(song.id, e);
+    } else if (button.classList.contains('move-up')) {
+        isPlaylistView ? movePlaylistSong(index, -1, e) : moveSong(index, -1, e);
+    } else if (button.classList.contains('move-down')) {
+        isPlaylistView ? movePlaylistSong(index, 1, e) : moveSong(index, 1, e);
+    } else if (button.classList.contains('delete-btn')) {
+        isPlaylistView ? handleRemoveFromPlaylist(currentPlaylistId, song.id, e) : deleteSong(song.id, e);
+    }
+});
+
+// Prevent touch events from bubbling to parent (for mobile)
+songList.addEventListener('touchstart', (e) => {
+    if (e.target.closest('button')) {
+        e.stopPropagation();
+    }
+}, { passive: true });
 
 // Dynamic Library Height Adjustment to prevent overlap
 function adjustLibraryHeight() {
