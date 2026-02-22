@@ -1020,21 +1020,24 @@ window.forceUpdate = async function () {
         if ('serviceWorker' in navigator) {
             const registrations = await navigator.serviceWorker.getRegistrations();
             for (const registration of registrations) {
+                // Unregister the service worker
                 await registration.unregister();
             }
         }
+
         if ('caches' in window) {
+            // Delete all PWA/Browser caches
             const keys = await caches.keys();
             await Promise.all(keys.map(key => caches.delete(key)));
         }
+
     } catch (error) {
         console.error('Update cleanup failed:', error);
         alert('Update cleanup failed: ' + error);
     } finally {
-        // Force browser to fetch a new copy by appending a timestamp
-        const url = new URL(window.location.href);
-        url.searchParams.set('t', Date.now());
-        window.location.href = url.toString();
+        // Force hard reload (bypassing cache) instead of just appending a query parameter
+        // The query parameter approach can sometimes still load from disk cache
+        window.location.href = window.location.pathname + "?t=" + Date.now();
     }
 };
 

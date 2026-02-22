@@ -1,4 +1,5 @@
-const CACHE_NAME = 'music-player-v78';
+const VERSION = new URL(self.location).searchParams.get('v') || '2.80';
+const CACHE_NAME = 'music-player-v' + VERSION;
 const ASSETS = [
     './',
     './index.html',
