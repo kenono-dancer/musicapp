@@ -211,7 +211,6 @@ function deleteSong(id, event) {
 }
 
 function moveSong(index, direction, event) {
-    event.stopPropagation();
     const newIndex = index + direction;
 
     if (newIndex < 0 || newIndex >= songs.length) return;
@@ -1602,7 +1601,6 @@ function handleRenamePlaylist(id, currentName, event) {
 }
 
 function movePlaylistSong(index, direction, event) {
-    event.stopPropagation();
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= songs.length) return;
 
