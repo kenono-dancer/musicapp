@@ -292,15 +292,32 @@ function moveSong(index, direction, event) {
     // (iOS Safari PWA: transaction.oncomplete may not fire reliably)
     renderSongList();
 
-    // Save to DB in background
+    // C1: Safe order-only update — never touch the blob in memory
+    // iOS Safari: blobs from getAll() become invalid after the readonly transaction
+    // closes. Putting an in-memory song object (stale blob ref) into a new
+    // readwrite transaction corrupts the stored blob permanently.
+    // Fix: read each record fresh inside the readwrite transaction, update
+    // ONLY the order field, then put it back. Blob is never serialised.
+    const id1 = songs[index].id;
+    const id2 = songs[newIndex].id;
+    const order1 = index;
+    const order2 = newIndex;
+
     try {
         const transaction = db.transaction(['songs'], 'readwrite');
         const store = transaction.objectStore('songs');
-        store.put(songs[index]);
-        store.put(songs[newIndex]);
-        transaction.onerror = (e) => console.error('moveSong DB error', e);
+
+        const req1 = store.get(id1);
+        req1.onsuccess = () => {
+            if (req1.result) { req1.result.order = order1; store.put(req1.result); }
+        };
+        const req2 = store.get(id2);
+        req2.onsuccess = () => {
+            if (req2.result) { req2.result.order = order2; store.put(req2.result); }
+        };
+        transaction.onerror = (e) => console.error('[moveSong] DB error:', e);
     } catch (e) {
-        console.error('moveSong DB exception', e);
+        console.error('[moveSong] DB exception:', e);
     }
 }
 
@@ -475,12 +492,24 @@ function playSong(index) {
     applyPreservesPitch(savedPitch);
     audio.playbackRate = savedSpeed;
 
+    // C5: Fallback to direct blob URL if SW audio fetch fails
+    audio.onerror = () => {
+        if (song.blob && audio.src !== '') {
+            console.warn('[Audio] SW URL failed, falling back to blob URL for song', song.id);
+            if (currentObjectURL) URL.revokeObjectURL(currentObjectURL);
+            currentObjectURL = URL.createObjectURL(song.blob);
+            audio.src = currentObjectURL;
+            audio.play()
+                .then(() => updatePlayPauseUI(true))
+                .catch(e => console.error('[Audio] Blob fallback failed:', e));
+        }
+    };
+
     // Call play() immediately — still within synchronous gesture chain
     audio.play()
         .then(() => updatePlayPauseUI(true))
         .catch(err => {
             console.error('[Audio] Playback failed:', err);
-            // If the context was still booting up, retry once after a short delay
             setTimeout(() => {
                 if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
                 audio.play()
@@ -610,21 +639,21 @@ function applyPreservesPitch(preserve) {
 
 function updateSpeed(saveToDB = true) {
     const speed = parseFloat(speedSlider.value);
-
-    // ── Round 3: Simple direct assignment ─────────────────────────────────
-    // The setTimeout-based ramp caused race conditions on iOS where multiple
-    // timers would fire simultaneously after song change, causing glitches.
-    // The native HTMLMediaElement playbackRate change is already smooth enough.
     audio.playbackRate = speed;
-
     speedValue.textContent = speed.toFixed(2);
 
+    // C3: Safe field-only update — read fresh from DB, update only speed
     if (saveToDB && currentSongIndex !== -1) {
-        const song = songs[currentSongIndex];
-        song.speed = speed;
-        const transaction = db.transaction(['songs'], 'readwrite');
-        const store = transaction.objectStore('songs');
-        store.put(song);
+        const songId = songs[currentSongIndex].id;
+        songs[currentSongIndex].speed = speed; // Keep in-memory in sync
+        try {
+            const transaction = db.transaction(['songs'], 'readwrite');
+            const store = transaction.objectStore('songs');
+            const req = store.get(songId);
+            req.onsuccess = () => {
+                if (req.result) { req.result.speed = speed; store.put(req.result); }
+            };
+        } catch (e) { console.error('[updateSpeed] DB exception:', e); }
     }
 }
 
@@ -636,19 +665,22 @@ function updateSpeedAndRender() {
 
 function updatePitchPreservation(saveToDB = true) {
     const preserve = pitchToggle.checked;
-
     // Set preservesPitch BEFORE playbackRate (Safari ordering requirement)
     applyPreservesPitch(preserve);
-    // Re-apply current playback rate to ensure it takes effect with new pitch mode
-    audio.playbackRate = audio.playbackRate;
+    audio.playbackRate = audio.playbackRate; // Re-apply to activate new pitch mode
 
+    // C4: Safe field-only update — read fresh from DB, update only preservePitch
     if (saveToDB && currentSongIndex !== -1) {
-        const song = songs[currentSongIndex];
-        song.preservePitch = preserve;
-
-        const transaction = db.transaction(['songs'], 'readwrite');
-        const store = transaction.objectStore('songs');
-        store.put(song);
+        const songId = songs[currentSongIndex].id;
+        songs[currentSongIndex].preservePitch = preserve; // Keep in-memory in sync
+        try {
+            const transaction = db.transaction(['songs'], 'readwrite');
+            const store = transaction.objectStore('songs');
+            const req = store.get(songId);
+            req.onsuccess = () => {
+                if (req.result) { req.result.preservePitch = preserve; store.put(req.result); }
+            };
+        } catch (e) { console.error('[updatePitch] DB exception:', e); }
     }
 }
 

@@ -36,7 +36,7 @@ function openDB() {
     });
 }
 
-// Get song blob from IndexedDB by ID
+// Get song blob from IndexedDB by ID — returns {blob, name}
 function getSongBlob(id) {
     return openDB().then(db => {
         return new Promise((resolve, reject) => {
@@ -44,8 +44,12 @@ function getSongBlob(id) {
             const store = tx.objectStore('songs');
             const req = store.get(id);
             req.onsuccess = () => {
-                if (req.result && req.result.blob) {
-                    resolve(req.result.blob);
+                const song = req.result;
+                // C7: Guard against corrupted records (missing or empty blob)
+                if (song && song.blob && song.blob.size > 0) {
+                    resolve({ blob: song.blob, name: song.name || '' });
+                } else if (song && song.blob) {
+                    reject(new Error('Song blob is empty (corrupted): ' + id));
                 } else {
                     reject(new Error('Song not found: ' + id));
                 }
@@ -90,9 +94,9 @@ self.addEventListener('fetch', (e) => {
         }
 
         e.respondWith(
-            getSongBlob(songId).then(blob => {
+            getSongBlob(songId).then(({ blob, name }) => {
                 const totalSize = blob.size;
-                const contentType = guessMimeType(blob);
+                const contentType = guessMimeType(blob, name);
                 const rangeHeader = e.request.headers.get('Range');
 
                 if (rangeHeader) {
