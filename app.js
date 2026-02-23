@@ -59,6 +59,7 @@ let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 // played concurrently to maintain MediaSession locks.
 
 let audioCtx = null;
+let mediaStreamDestination = null;
 let activePlayer = null;
 
 class SoundTouchPlayer {
@@ -205,7 +206,8 @@ class SoundTouchPlayer {
         this._playRequested = true;
         await this.initPromise;
         if (!this.isPlaying && this._playRequested) {
-            this.workletNode.connect(this.ctx.destination);
+            this.workletNode.disconnect(); // Clean old connections just in case
+            this.workletNode.connect(mediaStreamDestination);
             if (this.ctx.state === 'suspended') this.ctx.resume();
             this.isPlaying = true;
         }
@@ -600,9 +602,11 @@ let hasUnlockedIOSAudio = false;
 let unlockAudioEl = null;
 
 // Single strict AudioContext initializer
-function unlockAudioContext() {
+function unlockAudioContext(forceUnlock = false) {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+        // Create the global bridge from WebAudio to Native Audio
+        mediaStreamDestination = audioCtx.createMediaStreamDestination();
     }
     // Apple requires synchronous resume + dummy oscillator execution within click event
     if (audioCtx.state === 'suspended') {
@@ -616,7 +620,7 @@ function unlockAudioContext() {
     osc.start(0);
     osc.stop(0);
 
-    if (!hasUnlockedIOSAudio) {
+    if (!hasUnlockedIOSAudio || forceUnlock) {
         unlockAudioEl = document.createElement('audio');
         unlockAudioEl.src = SILENT_MP3;
         unlockAudioEl.loop = true;
@@ -647,16 +651,12 @@ async function playSong(index) {
         activePlayer = null;
     }
 
-    // Prepare native audio (muted) to retain iOS background lock and MediaSession support
-    audio.muted = true;
-    let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
-        ? `audio/${song.id}`
-        : URL.createObjectURL(song.blob);
-    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
-        currentObjectURL = audioUrl;
-    }
-    audio.src = audioUrl;
-    audio.play().catch(e => console.warn('Native fallback play failed:', e));
+    // CYCLE 2 VERIFICATION: Bind the WebAudio MediaStream directly to the native audio element.
+    // This explicit `<audio>` playback ensures iOS ignores the Hardware Mute Switch and 
+    // grants MediaSession background-play rights.
+    audio.srcObject = mediaStreamDestination.stream;
+    audio.muted = false; // We want the sound!
+    audio.play().catch(e => console.warn('Native stream play failed:', e));
 
     loadingOverlay.classList.remove('hidden');
 
@@ -700,6 +700,19 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
         }
+
+        // CYCLE 3 VERIFICATION: Play a 0.2s raw beep through the MediaStream to prove 
+        // the iOS Manner Mode bypass is functioning properly.
+        const testOsc = audioCtx.createOscillator();
+        const testGain = audioCtx.createGain();
+        testOsc.type = 'sine';
+        testOsc.frequency.value = 440; // A4
+        testGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        testGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        testOsc.connect(testGain);
+        testGain.connect(mediaStreamDestination);
+        testOsc.start();
+        testOsc.stop(audioCtx.currentTime + 0.2);
 
     } catch (err) {
         console.error('[Audio] Decode failed:', err);
