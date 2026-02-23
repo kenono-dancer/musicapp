@@ -237,7 +237,8 @@ function moveSong(index, direction, event) {
     store.put(s2);
 
     transaction.oncomplete = () => {
-        renderSongList();
+        // Defer DOM update so Safari click event processes cleanly
+        setTimeout(() => renderSongList(), 0);
     };
 }
 
@@ -1621,6 +1622,8 @@ function movePlaylistSong(index, direction, event) {
         songIds[newIndex] = temp;
 
         playlist.songIds = songIds;
-        store.put(playlist).onsuccess = () => loadSongs();
+        store.put(playlist).onsuccess = () => {
+            setTimeout(() => loadSongs(), 0);
+        };
     };
 }
