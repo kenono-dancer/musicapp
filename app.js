@@ -478,8 +478,14 @@ async function playSong(index) {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
     }
+
+    // Explicitly resume AudioContext inside the user gesture chain
     if (audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(e => console.warn('[Audio] resume failed:', e));
+        try {
+            await audioCtx.resume();
+        } catch (e) {
+            console.warn('[Audio] resume failed:', e);
+        }
     }
 
     // Prepare native audio (muted) to retain iOS background lock and MediaSession support
