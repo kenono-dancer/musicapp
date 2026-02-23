@@ -671,6 +671,18 @@ input:checked+.slider:before {
     padding: 8px 4px;
     cursor: pointer;
     opacity: 0.7;
+    /* iOS: ensure minimum tap target size */
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* iOS: prevent text selection on rapid tap */
+    -webkit-user-select: none;
+    user-select: none;
+    /* iOS: show tap feedback */
+    -webkit-tap-highlight-color: rgba(187, 134, 252, 0.2);
+    touch-action: manipulation;
 }
 
 .reorder-btn:hover {

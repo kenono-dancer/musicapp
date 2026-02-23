@@ -262,6 +262,9 @@ function renderSongList() {
             const isFirst = index === 0;
             const isLast = index === songs.length - 1;
             const isPlaylistView = currentPlaylistId !== null;
+            const capturedPlaylistId = currentPlaylistId;
+            const capturedSongId = song.id;
+            const capturedIndex = index;
 
             li.innerHTML = `
                 <div class="song-item-info">
@@ -271,16 +274,16 @@ function renderSongList() {
                     </div>
                 </div>
                 <div class="song-actions">
-                    <button class="add-to-playlist-btn" title="Add to Playlist" onclick="openAddToPlaylistModal(${song.id}, event)">
+                    <button class="add-to-playlist-btn" title="Add to Playlist">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
-                    <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''} onclick="${isPlaylistView ? `movePlaylistSong(${index}, -1, event)` : `moveSong(${index}, -1, event)`}">
+                    <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5z"/></svg>
                     </button>
-                    <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''} onclick="${isPlaylistView ? `movePlaylistSong(${index}, 1, event)` : `moveSong(${index}, 1, event)`}">
+                    <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                     </button>
-                    <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}" onclick="${isPlaylistView ? `handleRemoveFromPlaylist(${currentPlaylistId}, ${song.id}, event)` : `deleteSong(${song.id}, event)`}">
+                    <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}">
                         ${isPlaylistView
                     ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
                     : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'}
@@ -288,16 +291,46 @@ function renderSongList() {
                 </div>
             `;
 
-            // Click handler for playing song (not on buttons)
+            // Direct event listeners on each button (most reliable for iOS Safari PWA)
+            const upBtn = li.querySelector('.move-up');
+            const downBtn = li.querySelector('.move-down');
+            const delBtn = li.querySelector('.delete-btn');
+            const plBtn = li.querySelector('.add-to-playlist-btn');
+
+            if (plBtn) {
+                plBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openAddToPlaylistModal(capturedSongId, e);
+                });
+            }
+            if (upBtn && !isFirst) {
+                upBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    isPlaylistView ? movePlaylistSong(capturedIndex, -1) : moveSong(capturedIndex, -1);
+                });
+            }
+            if (downBtn && !isLast) {
+                downBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    isPlaylistView ? movePlaylistSong(capturedIndex, 1) : moveSong(capturedIndex, 1);
+                });
+            }
+            if (delBtn) {
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    isPlaylistView ? handleRemoveFromPlaylist(capturedPlaylistId, capturedSongId, e) : deleteSong(capturedSongId, e);
+                });
+            }
+
+            // Click the row (not buttons) to play
             li.addEventListener('click', (e) => {
                 if (e.target.closest('button')) return;
-                playSong(index);
+                playSong(capturedIndex);
             });
 
             songList.appendChild(li);
         });
 
-        // Dynamic Height Calculation
         requestAnimationFrame(adjustLibraryHeight);
     }
 }
@@ -305,12 +338,7 @@ function renderSongList() {
 // Note: Button actions are handled by inline onclick attributes in renderSongList()
 // The li click handler is added per-item in renderSongList for song playback
 
-// Prevent touch events from bubbling to parent (for mobile)
-songList.addEventListener('touchstart', (e) => {
-    if (e.target.closest('button')) {
-        e.stopPropagation();
-    }
-}, { passive: true });
+// (touchstart stopPropagation removed — it was interfering with iOS button touch events)
 
 // Dynamic Library Height Adjustment to prevent overlap
 function adjustLibraryHeight() {
