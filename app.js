@@ -220,23 +220,28 @@ function moveSong(index, direction, event) {
     songs[index] = songs[newIndex];
     songs[newIndex] = temp;
 
-    // Update IDs for tracking playing song logic
+    // Update currentSongIndex tracking
     if (currentSongIndex === index) currentSongIndex = newIndex;
     else if (currentSongIndex === newIndex) currentSongIndex = index;
 
-    // Update 'order' in DB
-    const s1 = songs[index];
-    const s2 = songs[newIndex];
+    // Update order values
+    songs[index].order = index;
+    songs[newIndex].order = newIndex;
 
-    s1.order = index;
-    s2.order = newIndex;
+    // Update UI immediately — don't wait for DB
+    // (iOS Safari PWA: transaction.oncomplete may not fire reliably)
+    renderSongList();
 
-    const transaction = db.transaction(['songs'], 'readwrite');
-    const store = transaction.objectStore('songs');
-    store.put(s1);
-    store.put(s2);
-
-    transaction.oncomplete = () => renderSongList();
+    // Save to DB in background
+    try {
+        const transaction = db.transaction(['songs'], 'readwrite');
+        const store = transaction.objectStore('songs');
+        store.put(songs[index]);
+        store.put(songs[newIndex]);
+        transaction.onerror = (e) => console.error('moveSong DB error', e);
+    } catch (e) {
+        console.error('moveSong DB exception', e);
+    }
 }
 
 function renderSongList() {
@@ -1576,20 +1581,34 @@ function movePlaylistSong(index, direction, event) {
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= songs.length) return;
 
-    const transaction = db.transaction(['playlists'], 'readwrite');
-    const store = transaction.objectStore('playlists');
-    const req = store.get(currentPlaylistId);
+    // Swap in local songs array immediately for instant UI update
+    const temp = songs[index];
+    songs[index] = songs[newIndex];
+    songs[newIndex] = temp;
 
-    req.onsuccess = () => {
-        const playlist = req.result;
-        if (!playlist) return;
+    // Update currentSongIndex tracking
+    if (currentSongIndex === index) currentSongIndex = newIndex;
+    else if (currentSongIndex === newIndex) currentSongIndex = index;
 
-        const songIds = playlist.songIds;
-        const temp = songIds[index];
-        songIds[index] = songIds[newIndex];
-        songIds[newIndex] = temp;
+    // Update UI immediately — don't wait for DB
+    renderSongList();
 
-        playlist.songIds = songIds;
-        store.put(playlist).onsuccess = () => loadSongs();
-    };
+    // Save updated playlist order to DB in background
+    try {
+        const transaction = db.transaction(['playlists'], 'readwrite');
+        const store = transaction.objectStore('playlists');
+        const req = store.get(currentPlaylistId);
+        req.onsuccess = () => {
+            const playlist = req.result;
+            if (!playlist) return;
+            // Swap songIds to match the new songs order
+            const idTemp = playlist.songIds[index];
+            playlist.songIds[index] = playlist.songIds[newIndex];
+            playlist.songIds[newIndex] = idTemp;
+            store.put(playlist);
+        };
+        transaction.onerror = (e) => console.error('movePlaylistSong DB error', e);
+    } catch (e) {
+        console.error('movePlaylistSong DB exception', e);
+    }
 }
