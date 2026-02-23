@@ -59,7 +59,6 @@ let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 // played concurrently to maintain MediaSession locks.
 
 let audioCtx = null;
-let mediaStreamDestination = null;
 let activePlayer = null;
 
 class SoundTouchPlayer {
@@ -207,7 +206,7 @@ class SoundTouchPlayer {
         await this.initPromise;
         if (!this.isPlaying && this._playRequested) {
             this.workletNode.disconnect(); // Clean old connections just in case
-            this.workletNode.connect(mediaStreamDestination);
+            this.workletNode.connect(this.ctx.destination);
             if (this.ctx.state === 'suspended') this.ctx.resume();
             this.isPlaying = true;
         }
@@ -596,17 +595,12 @@ window.addEventListener('orientationchange', () => {
     setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
 });
 
-// A tiny silent MP3 base64 to trick iOS Safari out of Silent Mode (Manner Mode)
-const SILENT_MP3 = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU5LjI3LjEwMAAAAAAAAAAAAAAA//twwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADBwsPEx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fPz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/////wAAAABMYXZjNTkuMzcuMTAwAAAAAAAAAAAAAAAAJAXAAAAAAAEgAFB1xNwAAAAAAAAAAAAAAAAAAAAA//twxAADMAAACcAAAABIQAAJwAAAAEAAAP/7cMQAAzAAAAnAAAAASEAAACcAAAAA//twxAADMAAACcAAAABIQAAJwAAAAEAAAP/7cMQAAzAAAAnAAAAASEAAACcAAAAA=";
-let hasUnlockedIOSAudio = false;
-let unlockAudioEl = null;
-
 // Single strict AudioContext initializer
 function unlockAudioContext(forceUnlock = false) {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-        // Create the global bridge from WebAudio to Native Audio
-        mediaStreamDestination = audioCtx.createMediaStreamDestination();
+        // Start the strict iOS WebAudio unmuter (bypasses Manner Mode)
+        if (typeof unmuteIOS === 'function') unmuteIOS(audioCtx);
     }
     // Apple requires synchronous resume + dummy oscillator execution within click event
     if (audioCtx.state === 'suspended') {
@@ -619,16 +613,6 @@ function unlockAudioContext(forceUnlock = false) {
     gain.connect(audioCtx.destination);
     osc.start(0);
     osc.stop(0);
-
-    if (!hasUnlockedIOSAudio || forceUnlock) {
-        unlockAudioEl = document.createElement('audio');
-        unlockAudioEl.src = SILENT_MP3;
-        unlockAudioEl.loop = true;
-        unlockAudioEl.volume = 1.0; // Must not be muted to override hardware switch
-        unlockAudioEl.setAttribute('playsinline', 'true');
-        unlockAudioEl.play().catch(e => console.warn('[Audio] Silent unlock failed', e));
-        hasUnlockedIOSAudio = true;
-    }
 }
 
 async function playSong(index) {
@@ -651,12 +635,16 @@ async function playSong(index) {
         activePlayer = null;
     }
 
-    // CYCLE 2 VERIFICATION: Bind the WebAudio MediaStream directly to the native audio element.
-    // This explicit `<audio>` playback ensures iOS ignores the Hardware Mute Switch and 
-    // grants MediaSession background-play rights.
-    audio.srcObject = mediaStreamDestination.stream;
-    audio.muted = false; // We want the sound!
-    audio.play().catch(e => console.warn('Native stream play failed:', e));
+    // Restore native audio (muted) to retain iOS background lock and MediaSession support
+    audio.muted = true;
+    let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
+        ? `audio/${song.id}`
+        : URL.createObjectURL(song.blob);
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+        currentObjectURL = audioUrl;
+    }
+    audio.src = audioUrl;
+    audio.play().catch(e => console.warn('Native fallback play failed:', e));
 
     loadingOverlay.classList.remove('hidden');
 
@@ -701,7 +689,7 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
         }
 
-        // CYCLE 3 VERIFICATION: Play a 0.2s raw beep through the MediaStream to prove 
+        // CYCLE 3 VERIFICATION: Play a 0.2s raw beep through destination to prove 
         // the iOS Manner Mode bypass is functioning properly.
         const testOsc = audioCtx.createOscillator();
         const testGain = audioCtx.createGain();
@@ -710,7 +698,7 @@ async function playSong(index) {
         testGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
         testGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
         testOsc.connect(testGain);
-        testGain.connect(mediaStreamDestination);
+        testGain.connect(audioCtx.destination);
         testOsc.start();
         testOsc.stop(audioCtx.currentTime + 0.2);
 
