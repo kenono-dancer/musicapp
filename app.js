@@ -458,8 +458,29 @@ window.addEventListener('orientationchange', () => {
     setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
 });
 
+// Single strict AudioContext initializer
+function unlockAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    }
+    // Apple requires synchronous resume + dummy oscillator execution within click event
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(0);
+    osc.stop(0);
+}
+
 async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
+
+    // Synchronous unlock before await
+    unlockAudioContext();
 
     currentSongIndex = index;
     const song = songs[index];
@@ -475,20 +496,8 @@ async function playSong(index) {
         activePlayer = null;
     }
 
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-    }
-
-    // Explicitly resume AudioContext inside the user gesture chain
-    if (audioCtx.state === 'suspended') {
-        try {
-            await audioCtx.resume();
-        } catch (e) {
-            console.warn('[Audio] resume failed:', e);
-        }
-    }
-
     // Prepare native audio (muted) to retain iOS background lock and MediaSession support
+    // (CYCLE 1 VERIFICATION: Temporary disabling to check for AVAudioSession conflict)
     audio.muted = true;
     let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
         ? `audio/${song.id}`
@@ -497,7 +506,7 @@ async function playSong(index) {
         currentObjectURL = audioUrl;
     }
     audio.src = audioUrl;
-    audio.play().catch(e => console.warn('Native fallback play failed:', e));
+    // audio.play().catch(e => console.warn('Native fallback play failed:', e));
 
     loadingOverlay.classList.remove('hidden');
 
@@ -541,6 +550,19 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
         }
+
+        // CYCLE 2 VERIFICATION: Play a 0.2s raw beep to prove AudioContext is alive
+        const testOsc = audioCtx.createOscillator();
+        const testGain = audioCtx.createGain();
+        testOsc.type = 'sine';
+        testOsc.frequency.value = 440; // A4
+        testGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        testGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        testOsc.connect(testGain);
+        testGain.connect(audioCtx.destination);
+        testOsc.start();
+        testOsc.stop(audioCtx.currentTime + 0.2);
+
     } catch (err) {
         console.error('[Audio] Decode failed:', err);
     } finally {
@@ -568,6 +590,7 @@ function generateSeekMarkers() {
 }
 
 function togglePlayPause() {
+    unlockAudioContext();
     if (!activePlayer) {
         if (currentSongIndex === -1 && songs.length > 0) playSong(0);
         return;
@@ -579,7 +602,7 @@ function togglePlayPause() {
         updatePlayPauseUI(false);
     } else {
         activePlayer.play();
-        audio.play().catch(e => console.warn('Native fallback play failed:', e));
+        // audio.play().catch(e => console.warn('Native fallback play failed:', e));
         updatePlayPauseUI(true);
     }
 }
