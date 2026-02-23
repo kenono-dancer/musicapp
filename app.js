@@ -432,7 +432,7 @@ window.addEventListener('orientationchange', () => {
     setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
 });
 
-async function playSong(index) {
+function playSong(index) {
     if (index < 0 || index >= songs.length) return;
 
     currentSongIndex = index;
@@ -444,20 +444,16 @@ async function playSong(index) {
         currentObjectURL = null;
     }
 
-    // ── Round 1: Web Audio Pipeline ────────────────────────────────────────
-    // Initialize the DynamicsCompressor pipeline on first user gesture
+    // Initialize the Web Audio pipeline (first call only)
     initAudioPipeline();
 
-    // ── Round 2: AWAIT resume() before play() ─────────────────────────────
-    // On iOS Safari, AudioContext starts suspended. audio.play() will produce
-    // no sound if the context is suspended because the audio element is now
-    // routed THROUGH the AudioContext graph. We MUST await resume() first.
+    // ── KEY iOS FIX ────────────────────────────────────────────────────────
+    // audio.play() MUST be called synchronously within the user gesture handler.
+    // Any await before audio.play() breaks the iOS gesture context, causing
+    // NotAllowedError. So we call resume() fire-and-forget (no await),
+    // then immediately call audio.play().
     if (audioCtx && audioCtx.state === 'suspended') {
-        try {
-            await audioCtx.resume();
-        } catch (err) {
-            console.warn('[Audio] Could not resume AudioContext:', err);
-        }
+        audioCtx.resume().catch(e => console.warn('[Audio] resume failed:', e));
     }
 
     // Use Service Worker URL for iOS audio quality (Range Request support)
@@ -475,27 +471,23 @@ async function playSong(index) {
     const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
     const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
 
-    // ── Round 3: Set preservesPitch BEFORE playbackRate (Safari requirement) ──
+    // Set preservesPitch BEFORE playbackRate (Safari ordering requirement)
     applyPreservesPitch(savedPitch);
     audio.playbackRate = savedSpeed;
 
-    // ── Round 4: Play with proper error handling ───────────────────────────
-    try {
-        await audio.play();
-        updatePlayPauseUI(true);
-    } catch (err) {
-        console.error('[Audio] Playback failed:', err);
-        // If AudioContext caused the failure, fall back to direct play
-        if (audioCtx) {
-            try {
-                await audioCtx.resume();
-                await audio.play();
-                updatePlayPauseUI(true);
-            } catch (fallbackErr) {
-                console.error('[Audio] Fallback playback also failed:', fallbackErr);
-            }
-        }
-    }
+    // Call play() immediately — still within synchronous gesture chain
+    audio.play()
+        .then(() => updatePlayPauseUI(true))
+        .catch(err => {
+            console.error('[Audio] Playback failed:', err);
+            // If the context was still booting up, retry once after a short delay
+            setTimeout(() => {
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                audio.play()
+                    .then(() => updatePlayPauseUI(true))
+                    .catch(e => console.error('[Audio] Retry also failed:', e));
+            }, 150);
+        });
 
     currentTitle.textContent = song.name;
     modalSongTitle.textContent = song.name;
