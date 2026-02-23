@@ -37,54 +37,41 @@ const modalDuration = document.getElementById('modal-duration');
 // Defined globally in index.html for robustness, but also here for reference if needed
 // window.openSettings = ...
 
-// State
+// ─── State ────────────────────────────────────────────────────────────────────
 let db;
 let audio = new Audio();
 let songs = [];
 let currentSongIndex = -1;
-let currentObjectURL = null; // Track current blob URL for cleanup
+let currentObjectURL = null;
 let isDraggingSeek = false;
-let playbackMode = 'all'; // 'all' (Loop All), 'one' (Loop One), 'single' (Stop)
-let lastBackPressTime = 0;
+let playbackMode = 'all'; // 'all' | 'one' | 'single'
 let longPressTimer = null;
 let rewindInterval = null;
 let isLongPressing = false;
-
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
 // ─── Web Audio API Pipeline ───────────────────────────────────────────────────
-// Initialised lazily on first user gesture (iOS requires user interaction)
 let audioCtx = null;
-let mediaSource = null;   // MediaElementAudioSourceNode (created once per audio element)
-let compressor = null;    // DynamicsCompressorNode
-let masterGain = null;    // GainNode
+let mediaSource = null;
+let compressor = null;
+let masterGain = null;
 
 /**
- * Build (or resume) the Web Audio processing chain:
+ * Build the Web Audio processing chain (lazy, called on first user gesture):
  *   <audio> → MediaElementAudioSourceNode → DynamicsCompressor → GainNode → speakers
  *
- * Spotify-style compressor values:
- *   - threshold -18 dBFS : soft onset, catches peaks without killing dynamics
- *   - knee 6 dB           : smooth transition into compression
- *   - ratio 3:1           : gentle — warmth without squash
- *   - attack 3 ms         : fast enough to catch transients
- *   - release 250 ms      : natural, musical release
+ * Compressor settings (Spotify-style):
+ *   threshold -18 dBFS, knee 6 dB, ratio 3:1, attack 3 ms, release 250 ms
  */
 function initAudioPipeline() {
-    // Round 4: Guard already built — just return (resume is handled by callers)
-    if (audioCtx) return;
+    if (audioCtx) return; // Already built; callers handle resume() if needed
 
     try {
-        // Use device native sample rate to avoid resampling artifacts
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({
             latencyHint: 'interactive',
         });
-
-        // Route <audio> element through the graph (created only ONCE per audio element)
         mediaSource = audioCtx.createMediaElementSource(audio);
 
-        // DynamicsCompressor — prevents clipping, maximises loudness headroom
-        // Spotify-style values: threshold -18dB, knee 6dB, ratio 3:1, attack 3ms, release 250ms
         compressor = audioCtx.createDynamicsCompressor();
         compressor.threshold.value = -18;
         compressor.knee.value = 6;
@@ -92,23 +79,42 @@ function initAudioPipeline() {
         compressor.attack.value = 0.003;
         compressor.release.value = 0.25;
 
-        // Master gain — 1.0 (compressor handles level management)
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 1.0;
 
-        // Connect: audio → compressor → gain → speakers
         mediaSource.connect(compressor);
         compressor.connect(masterGain);
         masterGain.connect(audioCtx.destination);
 
-        console.log('[Audio] Pipeline initialised. Sample rate:', audioCtx.sampleRate, 'Hz');
+        console.log('[Audio] Pipeline ready. Sample rate:', audioCtx.sampleRate, 'Hz');
     } catch (err) {
-        // Round 4: Reset ALL refs on failure to prevent partial connection state
-        console.warn('[Audio] Web Audio API unavailable, falling back to native playback:', err);
-        audioCtx = null;
-        mediaSource = null;
-        compressor = null;
-        masterGain = null;
+        console.warn('[Audio] Web Audio API unavailable, using native playback:', err);
+        audioCtx = null; mediaSource = null; compressor = null; masterGain = null;
+    }
+}
+
+/**
+ * Safely update one or more fields on a song record in IndexedDB.
+ * Reads the record fresh within the transaction to avoid iOS Safari's blob-
+ * invalidation bug (blobs from getAll() become stale after the readonly
+ * transaction closes — putting them back corrupts the stored audio).
+ *
+ * @param {number} songId  The song's primary key
+ * @param {object} fields  Plain object of fields to merge, e.g. { order: 2 }
+ */
+function safeDbUpdate(songId, fields) {
+    try {
+        const tx = db.transaction(['songs'], 'readwrite');
+        const store = tx.objectStore('songs');
+        const req = store.get(songId);
+        req.onsuccess = () => {
+            if (req.result) {
+                store.put(Object.assign(req.result, fields));
+            }
+        };
+        tx.onerror = (e) => console.error('[DB] safeDbUpdate error:', e);
+    } catch (e) {
+        console.error('[DB] safeDbUpdate exception:', e);
     }
 }
 
@@ -288,37 +294,11 @@ function moveSong(index, direction, event) {
     songs[index].order = index;
     songs[newIndex].order = newIndex;
 
-    // Update UI immediately — don't wait for DB
-    // (iOS Safari PWA: transaction.oncomplete may not fire reliably)
     renderSongList();
 
-    // C1: Safe order-only update — never touch the blob in memory
-    // iOS Safari: blobs from getAll() become invalid after the readonly transaction
-    // closes. Putting an in-memory song object (stale blob ref) into a new
-    // readwrite transaction corrupts the stored blob permanently.
-    // Fix: read each record fresh inside the readwrite transaction, update
-    // ONLY the order field, then put it back. Blob is never serialised.
-    const id1 = songs[index].id;
-    const id2 = songs[newIndex].id;
-    const order1 = index;
-    const order2 = newIndex;
-
-    try {
-        const transaction = db.transaction(['songs'], 'readwrite');
-        const store = transaction.objectStore('songs');
-
-        const req1 = store.get(id1);
-        req1.onsuccess = () => {
-            if (req1.result) { req1.result.order = order1; store.put(req1.result); }
-        };
-        const req2 = store.get(id2);
-        req2.onsuccess = () => {
-            if (req2.result) { req2.result.order = order2; store.put(req2.result); }
-        };
-        transaction.onerror = (e) => console.error('[moveSong] DB error:', e);
-    } catch (e) {
-        console.error('[moveSong] DB exception:', e);
-    }
+    // Persist new order; safeDbUpdate reads each record fresh to avoid iOS blob corruption
+    safeDbUpdate(songs[index].id, { order: index });
+    safeDbUpdate(songs[newIndex].id, { order: newIndex });
 }
 
 function renderSongList() {
@@ -464,16 +444,12 @@ function playSong(index) {
     // Initialize the Web Audio pipeline (first call only)
     initAudioPipeline();
 
-    // ── KEY iOS FIX ────────────────────────────────────────────────────────
-    // audio.play() MUST be called synchronously within the user gesture handler.
-    // Any await before audio.play() breaks the iOS gesture context, causing
-    // NotAllowedError. So we call resume() fire-and-forget (no await),
-    // then immediately call audio.play().
+    // resume() must be fire-and-forget — awaiting it breaks iOS user gesture context
     if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume().catch(e => console.warn('[Audio] resume failed:', e));
     }
 
-    // Use Service Worker URL for iOS audio quality (Range Request support)
+    // Prefer Service Worker URL (Range Request support) over direct blob URL
     let audioUrl;
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
         audioUrl = `audio/${song.id}`;
@@ -484,15 +460,13 @@ function playSong(index) {
 
     audio.src = audioUrl;
 
-    // Load per-song settings or default
     const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
     const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
 
-    // Set preservesPitch BEFORE playbackRate (Safari ordering requirement)
-    applyPreservesPitch(savedPitch);
+    applyPreservesPitch(savedPitch); // Must be set before playbackRate (Safari)
     audio.playbackRate = savedSpeed;
 
-    // C5: Fallback to direct blob URL if SW audio fetch fails
+    // Fall back to direct blob URL if SW audio fetch fails (e.g. corrupted record)
     audio.onerror = () => {
         if (song.blob && audio.src !== '') {
             console.warn('[Audio] SW URL failed, falling back to blob URL for song', song.id);
@@ -642,18 +616,9 @@ function updateSpeed(saveToDB = true) {
     audio.playbackRate = speed;
     speedValue.textContent = speed.toFixed(2);
 
-    // C3: Safe field-only update — read fresh from DB, update only speed
     if (saveToDB && currentSongIndex !== -1) {
-        const songId = songs[currentSongIndex].id;
-        songs[currentSongIndex].speed = speed; // Keep in-memory in sync
-        try {
-            const transaction = db.transaction(['songs'], 'readwrite');
-            const store = transaction.objectStore('songs');
-            const req = store.get(songId);
-            req.onsuccess = () => {
-                if (req.result) { req.result.speed = speed; store.put(req.result); }
-            };
-        } catch (e) { console.error('[updateSpeed] DB exception:', e); }
+        songs[currentSongIndex].speed = speed;
+        safeDbUpdate(songs[currentSongIndex].id, { speed });
     }
 }
 
@@ -665,22 +630,12 @@ function updateSpeedAndRender() {
 
 function updatePitchPreservation(saveToDB = true) {
     const preserve = pitchToggle.checked;
-    // Set preservesPitch BEFORE playbackRate (Safari ordering requirement)
     applyPreservesPitch(preserve);
     audio.playbackRate = audio.playbackRate; // Re-apply to activate new pitch mode
 
-    // C4: Safe field-only update — read fresh from DB, update only preservePitch
     if (saveToDB && currentSongIndex !== -1) {
-        const songId = songs[currentSongIndex].id;
-        songs[currentSongIndex].preservePitch = preserve; // Keep in-memory in sync
-        try {
-            const transaction = db.transaction(['songs'], 'readwrite');
-            const store = transaction.objectStore('songs');
-            const req = store.get(songId);
-            req.onsuccess = () => {
-                if (req.result) { req.result.preservePitch = preserve; store.put(req.result); }
-            };
-        } catch (e) { console.error('[updatePitch] DB exception:', e); }
+        songs[currentSongIndex].preservePitch = preserve;
+        safeDbUpdate(songs[currentSongIndex].id, { preservePitch: preserve });
     }
 }
 
