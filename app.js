@@ -236,34 +236,7 @@ function moveSong(index, direction, event) {
     store.put(s1);
     store.put(s2);
 
-    transaction.oncomplete = () => {
-        // Direct DOM manipulation instead of full render to fix iOS Safari click-loss bug
-        const items = Array.from(songList.children);
-        const item1 = items[index];
-        const item2 = items[newIndex];
-
-        if (item1 && item2) {
-            // Swap in DOM
-            if (direction === -1) {
-                songList.insertBefore(item1, item2);
-            } else {
-                songList.insertBefore(item2, item1);
-            }
-
-            // Update indices
-            item1.setAttribute('data-index', newIndex);
-            item2.setAttribute('data-index', index);
-
-            // Fix disabled states for first/last items
-            const newItems = Array.from(songList.children);
-            newItems.forEach((li, idx) => {
-                const upBtn = li.querySelector('.move-up');
-                const downBtn = li.querySelector('.move-down');
-                if (upBtn) upBtn.disabled = (idx === 0);
-                if (downBtn) downBtn.disabled = (idx === newItems.length - 1);
-            });
-        }
-    };
+    transaction.oncomplete = () => renderSongList();
 }
 
 function renderSongList() {
@@ -309,6 +282,26 @@ function renderSongList() {
                     </button>
                 </div>
             `;
+
+            // Per-button touchend listeners for iOS Safari compatibility
+            // iOS cancels click delegation when the DOM is rebuilt - touchend fires before that
+            const addTouchHandler = (selector, action) => {
+                const btn = li.querySelector(selector);
+                if (btn && !btn.disabled) {
+                    btn.addEventListener('touchend', (e) => {
+                        e.preventDefault(); // Prevent the ghost click that follows touchend
+                        action();
+                    }, { once: true });
+                }
+            };
+
+            const isPlaylistViewLocal = currentPlaylistId !== null;
+            if (!isFirst) {
+                addTouchHandler('.move-up', () => isPlaylistViewLocal ? movePlaylistSong(index, -1, null) : moveSong(index, -1, null));
+            }
+            if (!isLast) {
+                addTouchHandler('.move-down', () => isPlaylistViewLocal ? movePlaylistSong(index, 1, null) : moveSong(index, 1, null));
+            }
 
             // Click handler for playing song (not on buttons)
             li.addEventListener('click', (e) => {
@@ -1638,49 +1631,11 @@ function movePlaylistSong(index, direction, event) {
         if (!playlist) return;
 
         const songIds = playlist.songIds;
-        // The 'songs' array is sorted by the order in playlist.songIds
-        // So we can swap the IDs at 'index' and 'newIndex' directly
         const temp = songIds[index];
         songIds[index] = songIds[newIndex];
         songIds[newIndex] = temp;
 
-        // Also update the local 'songs' array so playSong(index) works correctly after move
-        const tempSong = songs[index];
-        songs[index] = songs[newIndex];
-        songs[newIndex] = tempSong;
-
-        // Update currentSongIndex if the playing song moved
-        if (currentSongIndex === index) currentSongIndex = newIndex;
-        else if (currentSongIndex === newIndex) currentSongIndex = index;
-
         playlist.songIds = songIds;
-        store.put(playlist).onsuccess = () => {
-            // Direct DOM manipulation instead of full render to fix iOS Safari click-loss bug
-            const items = Array.from(songList.children);
-            const item1 = items[index];
-            const item2 = items[newIndex];
-
-            if (item1 && item2) {
-                // Swap in DOM
-                if (direction === -1) {
-                    songList.insertBefore(item1, item2);
-                } else {
-                    songList.insertBefore(item2, item1);
-                }
-
-                // Update indices
-                item1.setAttribute('data-index', newIndex);
-                item2.setAttribute('data-index', index);
-
-                // Fix disabled states for first/last items
-                const newItems = Array.from(songList.children);
-                newItems.forEach((li, idx) => {
-                    const upBtn = li.querySelector('.move-up');
-                    const downBtn = li.querySelector('.move-down');
-                    if (upBtn) upBtn.disabled = (idx === 0);
-                    if (downBtn) downBtn.disabled = (idx === newItems.length - 1);
-                });
-            }
-        };
+        store.put(playlist).onsuccess = () => loadSongs();
     };
 }
