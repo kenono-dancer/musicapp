@@ -689,19 +689,6 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
         }
 
-        // CYCLE 3 VERIFICATION: Play a 0.2s raw beep through destination to prove 
-        // the iOS Manner Mode bypass is functioning properly.
-        const testOsc = audioCtx.createOscillator();
-        const testGain = audioCtx.createGain();
-        testOsc.type = 'sine';
-        testOsc.frequency.value = 440; // A4
-        testGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        testGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-        testOsc.connect(testGain);
-        testGain.connect(audioCtx.destination);
-        testOsc.start();
-        testOsc.stop(audioCtx.currentTime + 0.2);
-
     } catch (err) {
         console.error('[Audio] Decode failed:', err);
     } finally {
