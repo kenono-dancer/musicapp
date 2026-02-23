@@ -137,7 +137,25 @@ self.addEventListener('fetch', (e) => {
         return;
     }
 
-    // Normal cache-first strategy for other requests
+    // Network-first strategy for HTML pages (like index.html) to ensure updates
+    if (e.request.mode === 'navigate' || (e.request.headers.get('accept') && e.request.headers.get('accept').includes('text/html'))) {
+        e.respondWith(
+            fetch(e.request)
+                .then(response => {
+                    // Cache the latest version
+                    const responseClone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(e.request, responseClone));
+                    return response;
+                })
+                .catch(() => {
+                    // Fallback to cache if offline
+                    return caches.match(e.request);
+                })
+        );
+        return;
+    }
+
+    // Normal cache-first strategy for other assets (CSS, JS)
     e.respondWith(
         caches.match(e.request)
             .then(response => response || fetch(e.request))
