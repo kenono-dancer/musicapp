@@ -50,10 +50,77 @@ let rewindInterval = null;
 let isLongPressing = false;
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
-// ─── Native Audio Handling ────────────────────────────────────────────────────
-// As of v2.95, we removed the Web Audio API pipeline to restore OS-level
-// pitch preservation and eliminate resampling noise during speed changes.
-// The `<audio>` element now plays natively through the device audio engine.
+// ─── Phase Vocoder Audio Engine (SoundTouchJS) ─────────────────────────────
+// iOS Safari's native <audio> time-stretching produces metallic noise when
+// slowing down (rate < 1.0) and dynamically ignores preservesPitch toggles.
+// We bypass the native playback engine and use SoundTouchJS (a Phase Vocoder)
+// via a ScriptProcessorNode to ensure perfect pitch and zero-noise speed changes.
+// To keep iOS playing in the background, a muted native <audio> element is 
+// played concurrently to maintain MediaSession locks.
+
+let audioCtx = null;
+let activePlayer = null;
+
+class SoundTouchPlayer {
+    constructor(context, audioBuffer, onEnd) {
+        this.ctx = context;
+        this.onEnd = onEnd;
+
+        // SoundTouch.js PitchShifter handles the ScriptProcessorNode connection
+        // and frame extraction from the AudioBuffer.
+        this.shifter = new window.PitchShifter(this.ctx, audioBuffer, 4096, () => {
+            this.pause();
+            if (this.onEnd) this.onEnd();
+        });
+
+        this.isPlaying = false;
+    }
+
+    play() {
+        if (!this.isPlaying) {
+            this.shifter.connect(this.ctx.destination);
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            this.isPlaying = true;
+        }
+    }
+
+    pause() {
+        if (this.isPlaying) {
+            this.shifter.disconnect();
+            this.isPlaying = false;
+        }
+    }
+
+    seek(percentage) {
+        this.shifter.percentagePlayed = Math.max(0, Math.min(percentage, 100)) / 100;
+    }
+
+    get currentTime() {
+        return this.shifter.timePlayed;
+    }
+
+    get duration() {
+        return this.shifter.duration;
+    }
+
+    setSpeedAndPitch(speed, preservePitch) {
+        // Enforce safe boundaries to prevent engine implosion
+        speed = Math.max(0.25, Math.min(speed, 4.0));
+
+        if (preservePitch) {
+            this.shifter.tempo = speed; // Changes speed, maintains pitch
+            this.shifter.rate = 1.0;
+        } else {
+            this.shifter.rate = speed;  // Changes speed AND pitch
+            this.shifter.tempo = 1.0;
+        }
+    }
+
+    destroy() {
+        this.pause();
+        this.shifter.off();
+    }
+}
 
 /**
  * Safely update one or more fields on a song record in IndexedDB.
@@ -391,7 +458,7 @@ window.addEventListener('orientationchange', () => {
     setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
 });
 
-function playSong(index) {
+async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
 
     currentSongIndex = index;
@@ -403,72 +470,83 @@ function playSong(index) {
         currentObjectURL = null;
     }
 
-    // Prefer Service Worker URL (Range Request support) over direct blob URL
-    let audioUrl;
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-        audioUrl = `audio/${song.id}`;
-    } else {
-        audioUrl = URL.createObjectURL(song.blob);
-        currentObjectURL = audioUrl;
+    if (activePlayer) {
+        activePlayer.destroy();
+        activePlayer = null;
     }
 
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.warn('[Audio] resume failed:', e));
+    }
+
+    // Prepare native audio (muted) to retain iOS background lock and MediaSession support
+    audio.muted = true;
+    let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
+        ? `audio/${song.id}`
+        : URL.createObjectURL(song.blob);
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+        currentObjectURL = audioUrl;
+    }
     audio.src = audioUrl;
+    audio.play().catch(e => console.warn('Native fallback play failed:', e));
 
-    const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
-    const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
+    loadingOverlay.classList.remove('hidden');
 
-    applyPreservesPitch(savedPitch); // Must be set before playbackRate (Safari)
-    audio.playbackRate = savedSpeed;
-
-    // Fall back to direct blob URL if SW audio fetch fails (e.g. corrupted record)
-    audio.onerror = () => {
-        if (song.blob && audio.src !== '') {
-            console.warn('[Audio] SW URL failed, falling back to blob URL for song', song.id);
-            if (currentObjectURL) URL.revokeObjectURL(currentObjectURL);
-            currentObjectURL = URL.createObjectURL(song.blob);
-            audio.src = currentObjectURL;
-            audio.play()
-                .then(() => updatePlayPauseUI(true))
-                .catch(e => console.error('[Audio] Blob fallback failed:', e));
+    try {
+        let arrayBuffer;
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            const res = await fetch(`audio/${song.id}`);
+            arrayBuffer = await res.arrayBuffer();
+        } else {
+            arrayBuffer = await song.blob.arrayBuffer();
         }
-    };
 
-    // Call play() within the synchronous gesture chain
-    audio.play()
-        .then(() => updatePlayPauseUI(true))
-        .catch(err => console.error('[Audio] Playback failed:', err));
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-    currentTitle.textContent = song.name;
-    modalSongTitle.textContent = song.name;
+        activePlayer = new SoundTouchPlayer(audioCtx, audioBuffer, () => handleSongEnd());
 
-    // Update UI controls to match
-    speedSlider.value = savedSpeed;
-    speedValue.textContent = savedSpeed.toFixed(2);
-    pitchToggle.checked = savedPitch;
+        const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
+        const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
 
-    updateSpeed(false);
-    updatePitchPreservation(false);
-    renderSongList();
+        activePlayer.setSpeedAndPitch(savedSpeed, savedPitch);
+        activePlayer.play();
 
-    if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: song.name,
-            artist: 'My Music',
-            album: 'Offline Player'
-        });
-        navigator.mediaSession.setActionHandler('play', () => { audio.play(); });
-        navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); });
-        navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
-        navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
+        updatePlayPauseUI(true);
+        currentTitle.textContent = song.name;
+        modalSongTitle.textContent = song.name;
+        speedSlider.value = savedSpeed;
+        speedValue.textContent = savedSpeed.toFixed(2);
+        pitchToggle.checked = savedPitch;
+
+        renderSongList();
+        generateSeekMarkers();
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: song.name,
+                artist: 'My Music',
+                album: 'Offline Player'
+            });
+            navigator.mediaSession.setActionHandler('play', () => togglePlayPause());
+            navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
+            navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+            navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+        }
+    } catch (err) {
+        console.error('[Audio] Decode failed:', err);
+    } finally {
+        loadingOverlay.classList.add('hidden');
     }
 }
 
 function generateSeekMarkers() {
     modalSeekMarkers.innerHTML = '';
-    const duration = audio.duration;
+    const duration = activePlayer ? activePlayer.duration : 0;
     if (!duration || !isFinite(duration)) return;
 
-    // 0, 20, 40, 60, 80, 100%
     for (let i = 0; i <= 5; i++) {
         const percent = i * 20;
         const time = (percent / 100) * duration;
@@ -476,9 +554,6 @@ function generateSeekMarkers() {
         const marker = document.createElement('div');
         marker.className = 'seek-marker';
         marker.style.left = `${percent}%`;
-
-        // Don't show text for 0% effectively (optional, but requested "with seconds")
-        // Check if overlaps too much? Simple version first.
         marker.setAttribute('data-time', formatTime(time));
 
         modalSeekMarkers.appendChild(marker);
@@ -487,11 +562,19 @@ function generateSeekMarkers() {
 }
 
 function togglePlayPause() {
-    if (audio.paused) {
+    if (!activePlayer) {
         if (currentSongIndex === -1 && songs.length > 0) playSong(0);
-        else audio.play().catch(e => console.error('[Audio] Play failed:', e));
-    } else {
+        return;
+    }
+
+    if (activePlayer.isPlaying) {
+        activePlayer.pause();
         audio.pause();
+        updatePlayPauseUI(false);
+    } else {
+        activePlayer.play();
+        audio.play().catch(e => console.warn('Native fallback play failed:', e));
+        updatePlayPauseUI(true);
     }
 }
 
@@ -517,8 +600,12 @@ function updatePlayPauseUI(isPlaying) {
 function handleSongEnd() {
     if (playbackMode === 'one') {
         // Loop One
+        if (activePlayer) {
+            activePlayer.seek(0);
+            activePlayer.play();
+        }
         audio.currentTime = 0;
-        audio.play();
+        audio.play().catch(e => console.warn('Native fallback play failed:', e));
     } else if (playbackMode === 'single') {
         // Stop (Single)
         updatePlayPauseUI(false);
@@ -540,16 +627,6 @@ function playPrev() {
     playSong(prevIndex);
 }
 
-/**
- * Central helper — sets pitch preservation on the audio element.
- * Must be called BEFORE setting playbackRate (Safari bug workaround).
- */
-function applyPreservesPitch(preserve) {
-    if (audio.preservesPitch !== undefined) audio.preservesPitch = preserve;
-    if (audio.mozPreservesPitch !== undefined) audio.mozPreservesPitch = preserve;
-    if (audio.webkitPreservesPitch !== undefined) audio.webkitPreservesPitch = preserve;
-}
-
 let speedUpdateFrame = null;
 
 function updateSpeed(saveToDB = true) {
@@ -563,17 +640,14 @@ function updateSpeed(saveToDB = true) {
         safeDbUpdate(songs[currentSongIndex].id, { speed });
     }
 
-    // ── C7: Debounce the actual audio engine update ──
-    // The range slider fires 'input' dozens of times per second. 
-    // Rapidly changing playbackRate overloads the iOS Resampler, causing loud
-    // crackle/pop/zipper noise and buffer underruns. We throttle the actual
-    // hardware assignment using requestAnimationFrame.
+    // Debounce the actual audio engine update
     if (speedUpdateFrame) cancelAnimationFrame(speedUpdateFrame);
     speedUpdateFrame = requestAnimationFrame(() => {
-        // Enforce Safari's strict ordering rules: preservesPitch must be active *before* rate change
         const shouldPreserve = pitchToggle.checked;
-        applyPreservesPitch(shouldPreserve);
-        audio.playbackRate = speed;
+        if (activePlayer) {
+            activePlayer.setSpeedAndPitch(speed, shouldPreserve);
+        }
+        audio.playbackRate = speed; // Keep native audio slightly in sync
     });
 }
 
@@ -586,9 +660,9 @@ function updateSpeedAndRender() {
 function updatePitchPreservation(saveToDB = true) {
     const preserve = pitchToggle.checked;
 
-    // C4 & C5: Safari requires setting preservesPitch, THEN forcing a playbackRate re-assignment
-    applyPreservesPitch(preserve);
-    audio.playbackRate = parseFloat(speedSlider.value);
+    if (activePlayer) {
+        activePlayer.setSpeedAndPitch(parseFloat(speedSlider.value), preserve);
+    }
 
     if (saveToDB && currentSongIndex !== -1) {
         songs[currentSongIndex].preservePitch = preserve;
@@ -744,6 +818,7 @@ skipFwdBtn.addEventListener('click', (e) => {
 function startFastForward() {
     isLongPressing = true;
     longPressTimer = setTimeout(() => {
+        if (activePlayer) activePlayer.setSpeedAndPitch(2.0, false);
         audio.playbackRate = 2.0;
     }, 500); // Wait 500ms to consider it a hold
 }
@@ -753,6 +828,7 @@ function stopFastForward() {
     if (audio.playbackRate === 2.0) {
         // Restore speed
         const speed = parseFloat(speedSlider.value);
+        if (activePlayer) activePlayer.setSpeedAndPitch(speed, pitchToggle.checked);
         audio.playbackRate = speed;
         // Prevent next 'click' from firing seek (if any)
         setTimeout(() => { isLongPressing = false; }, 50);
@@ -775,6 +851,10 @@ function startRewind() {
     isLongPressing = true;
     longPressTimer = setTimeout(() => {
         rewindInterval = setInterval(() => {
+            if (activePlayer) {
+                const newTime = Math.max(0, activePlayer.currentTime - 0.2);
+                activePlayer.seek((newTime / activePlayer.duration) * 100);
+            }
             audio.currentTime = Math.max(0, audio.currentTime - 0.2); // 0.2s back every 50ms = 4x speed approx
         }, 50);
     }, 500);
@@ -799,6 +879,7 @@ function handleBackTouchEnd(e) {
     const wasLongPress = stopRewind();
     if (!wasLongPress) {
         // Always restart
+        if (activePlayer) activePlayer.seek(0);
         audio.currentTime = 0;
     }
 }
@@ -820,33 +901,39 @@ skipBackBtn.addEventListener('mouseup', stopRewind);
 skipBackBtn.addEventListener('touchend', handleBackTouchEnd); // Specific handler for touch
 skipBackBtn.addEventListener('mouseleave', stopRewind);
 
-audio.addEventListener('play', () => updatePlayPauseUI(true));
-audio.addEventListener('pause', () => updatePlayPauseUI(false));
-audio.addEventListener('ended', handleSongEnd);
-audio.addEventListener('loadedmetadata', generateSeekMarkers);
+let timeUpdateFrame = null;
 
-audio.addEventListener('timeupdate', () => {
-    if (!isDraggingSeek) {
-        const percent = (audio.currentTime / audio.duration) * 100;
-        const validPercent = isNaN(percent) ? 0 : percent;
+function loopTimeUpdate() {
+    if (activePlayer && activePlayer.isPlaying) {
+        const duration = activePlayer.duration;
+        const current = activePlayer.currentTime;
 
-        // Update Main Slider
-        seekSlider.value = validPercent;
-        currentTimeEl.textContent = formatTime(audio.currentTime);
+        if (duration > 0 && !isDraggingSeek) {
+            const percent = (current / duration) * 100;
+            const validPercent = isNaN(percent) ? 0 : percent;
 
-        // Update Modal Slider
-        modalSeekSlider.value = validPercent;
-        modalCurrentTime.textContent = formatTime(audio.currentTime);
+            // Update Main Slider
+            seekSlider.value = validPercent;
+            currentTimeEl.textContent = formatTime(current);
+
+            // Update Modal Slider
+            modalSeekSlider.value = validPercent;
+            modalCurrentTime.textContent = formatTime(current);
+        }
+        durationEl.textContent = formatTime(duration);
+        updateSeekMarkers();
     }
-    durationEl.textContent = formatTime(audio.duration);
-    updateSeekMarkers();
-});
+    timeUpdateFrame = requestAnimationFrame(loopTimeUpdate);
+}
+timeUpdateFrame = requestAnimationFrame(loopTimeUpdate);
 
 seekSlider.addEventListener('input', () => {
     isDraggingSeek = true;
-    const time = (seekSlider.value / 100) * audio.duration;
+    const duration = activePlayer ? activePlayer.duration : 0;
+    const time = (seekSlider.value / 100) * duration;
     currentTimeEl.textContent = formatTime(time);
-    audio.currentTime = time; // Enable scrubbing
+    if (activePlayer) activePlayer.seek(seekSlider.value);
+    audio.currentTime = time; // Keep lockscreen somewhat accurate if possible
 });
 
 seekSlider.addEventListener('change', () => {
@@ -859,6 +946,7 @@ const modalSkipFwdBtn = document.getElementById('modal-skip-fwd-btn');
 
 if (modalSkipBackBtn) {
     modalSkipBackBtn.addEventListener('click', () => {
+        if (activePlayer) activePlayer.seek(0);
         audio.currentTime = 0;
     });
 }
@@ -871,9 +959,12 @@ if (modalSkipFwdBtn) {
 // First modal seek slider listeners (desktop)
 modalSeekSlider.addEventListener('input', () => {
     isDraggingSeek = true;
-    const time = (modalSeekSlider.value / 100) * audio.duration;
+    const duration = activePlayer ? activePlayer.duration : 0;
+    const time = (modalSeekSlider.value / 100) * duration;
     modalCurrentTime.textContent = formatTime(time);
+    if (activePlayer) activePlayer.seek(modalSeekSlider.value);
     audio.currentTime = time;
+
 });
 
 modalSeekSlider.addEventListener('change', () => {
@@ -961,7 +1052,8 @@ document.body.addEventListener('touchmove', function (e) {
 // Fix sliders on mobile - Explicit isolation
 // Custom Seek Logic for Mobile (Tap/Drag Anywhere)
 function handleSeekTouch(e) {
-    if (!audio.duration) return;
+    const duration = activePlayer ? activePlayer.duration : 0;
+    if (!duration) return;
 
     // Prevent default to stop scrolling/native behavior
     e.preventDefault();
@@ -981,7 +1073,8 @@ function handleSeekTouch(e) {
     isDraggingSeek = true;
     seekSlider.value = percent;
 
-    const time = (percent / 100) * audio.duration;
+    const time = (percent / 100) * duration;
+    if (activePlayer) activePlayer.seek(percent);
     audio.currentTime = time;
     currentTimeEl.textContent = formatTime(time);
 }
@@ -997,10 +1090,10 @@ seekSlider.addEventListener('touchend', () => {
 speedSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
 speedSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
 
-// Modal Seek Slider
 // Modal Seek Slider logic with Tap-to-Seek support
 function handleModalSeekTouch(e) {
-    if (!audio.duration) return;
+    const duration = activePlayer ? activePlayer.duration : 0;
+    if (!duration) return;
 
     // Prevent default to stop scrolling/native behavior
     e.preventDefault();
@@ -1020,7 +1113,8 @@ function handleModalSeekTouch(e) {
     isDraggingSeek = true;
     modalSeekSlider.value = percent;
 
-    const time = (percent / 100) * audio.duration;
+    const time = (percent / 100) * duration;
+    if (activePlayer) activePlayer.seek(percent);
     audio.currentTime = time;
     modalCurrentTime.textContent = formatTime(time);
 }
@@ -1034,6 +1128,11 @@ modalSeekSlider.addEventListener('touchend', () => {
 
 // Skip Time
 window.skipTime = function (seconds) {
+    if (activePlayer) {
+        const newTime = Math.max(0, activePlayer.currentTime + seconds);
+        const percent = (newTime / activePlayer.duration) * 100;
+        activePlayer.seek(percent);
+    }
     if (audio.src) {
         audio.currentTime += seconds;
     }
