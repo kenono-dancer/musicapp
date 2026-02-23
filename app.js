@@ -52,6 +52,65 @@ let isLongPressing = false;
 
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
+// ─── Web Audio API Pipeline ───────────────────────────────────────────────────
+// Initialised lazily on first user gesture (iOS requires user interaction)
+let audioCtx = null;
+let mediaSource = null;   // MediaElementAudioSourceNode (created once per audio element)
+let compressor = null;    // DynamicsCompressorNode
+let masterGain = null;    // GainNode
+
+/**
+ * Build (or resume) the Web Audio processing chain:
+ *   <audio> → MediaElementAudioSourceNode → DynamicsCompressor → GainNode → speakers
+ *
+ * Spotify-style compressor values:
+ *   - threshold -18 dBFS : soft onset, catches peaks without killing dynamics
+ *   - knee 6 dB           : smooth transition into compression
+ *   - ratio 3:1           : gentle — warmth without squash
+ *   - attack 3 ms         : fast enough to catch transients
+ *   - release 250 ms      : natural, musical release
+ */
+function initAudioPipeline() {
+    if (audioCtx) {
+        // Already built — just ensure context is running (iOS may suspend it)
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return;
+    }
+
+    try {
+        // Use device native sample rate to avoid resampling artifacts
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+            latencyHint: 'interactive',
+            // Do NOT force sampleRate — let the device use its native rate
+        });
+
+        // Route <audio> element through the graph (created only once)
+        mediaSource = audioCtx.createMediaElementSource(audio);
+
+        // DynamicsCompressor — prevents clipping, maximises loudness headroom
+        compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.value = -18;
+        compressor.knee.value = 6;
+        compressor.ratio.value = 3;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.25;
+
+        // Master gain — keep at 1.0 (compressor handles level management)
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 1.0;
+
+        // Connect the chain
+        mediaSource.connect(compressor);
+        compressor.connect(masterGain);
+        masterGain.connect(audioCtx.destination);
+
+        console.log('[Audio] Pipeline initialised. Sample rate:', audioCtx.sampleRate, 'Hz');
+    } catch (err) {
+        console.warn('[Audio] Web Audio API unavailable, falling back to native playback:', err);
+        audioCtx = null;
+    }
+}
+
 // Format Time
 function formatTime(seconds) {
     if (isNaN(seconds)) return "0:00";
@@ -383,6 +442,10 @@ function playSong(index) {
         currentObjectURL = null;
     }
 
+    // ── Web Audio Pipeline ─────────────────────────────────────────────────
+    // Build or resume the DynamicsCompressor pipeline (lazy init on first gesture)
+    initAudioPipeline();
+
     // Use Service Worker URL for iOS audio quality (Range Request support)
     // Fall back to blob URL if SW is not available
     let audioUrl;
@@ -394,24 +457,30 @@ function playSong(index) {
     }
 
     audio.src = audioUrl;
-    audio.play()
-        .then(() => updatePlayPauseUI(true))
-        .catch(e => console.error("Playback failed", e));
 
-    currentTitle.textContent = song.name;
-    modalSongTitle.textContent = song.name;
-
-    // Apply current settings
-    // Apply current settings
     // Load per-song settings or default
     const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
     const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
 
-    // Apply to Audio
+    // ── IMPORTANT: Set preservesPitch BEFORE playbackRate (Safari requires this order) ──
+    applyPreservesPitch(savedPitch);
     audio.playbackRate = savedSpeed;
-    if (audio.preservesPitch !== undefined) audio.preservesPitch = savedPitch;
-    else if (audio.mozPreservesPitch !== undefined) audio.mozPreservesPitch = savedPitch;
-    else if (audio.webkitPreservesPitch !== undefined) audio.webkitPreservesPitch = savedPitch;
+
+    // Resume AudioContext (iOS PWA may suspend it between interactions)
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+
+    audio.play()
+        .then(() => {
+            updatePlayPauseUI(true);
+            // Re-resume in case play() itself triggered suspension
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        })
+        .catch(e => console.error('Playback failed', e));
+
+    currentTitle.textContent = song.name;
+    modalSongTitle.textContent = song.name;
 
     // Update UI controls to match
     speedSlider.value = savedSpeed;
@@ -515,9 +584,41 @@ function playPrev() {
     playSong(prevIndex);
 }
 
+/**
+ * Central helper — sets pitch preservation on the audio element.
+ * Must be called BEFORE setting playbackRate (Safari bug workaround).
+ */
+function applyPreservesPitch(preserve) {
+    if (audio.preservesPitch !== undefined) audio.preservesPitch = preserve;
+    else if (audio.mozPreservesPitch !== undefined) audio.mozPreservesPitch = preserve;
+    else if (audio.webkitPreservesPitch !== undefined) audio.webkitPreservesPitch = preserve;
+}
+
 function updateSpeed(saveToDB = true) {
     const speed = parseFloat(speedSlider.value);
-    audio.playbackRate = speed;
+
+    // Smooth ramp to new speed (prevents click/zipper artifacts on iOS)
+    // Falls back to instant assignment when audio isn't playing or on older browsers
+    try {
+        if (audioCtx && !audio.paused) {
+            // Very short ramp (50ms) — imperceptible to humans but eliminates artifacts
+            const rampTime = audioCtx.currentTime + 0.05;
+            // playbackRate cannot use AudioParam ramp directly on MediaElement;
+            // instead we step in small increments via a micro-ramp wrapper
+            const startRate = audio.playbackRate;
+            const steps = 5;
+            for (let i = 1; i <= steps; i++) {
+                setTimeout(() => {
+                    audio.playbackRate = startRate + (speed - startRate) * (i / steps);
+                }, i * 10);
+            }
+        } else {
+            audio.playbackRate = speed;
+        }
+    } catch {
+        audio.playbackRate = speed;
+    }
+
     speedValue.textContent = speed.toFixed(2);
 
     if (saveToDB && currentSongIndex !== -1) {
@@ -540,13 +641,10 @@ function updateSpeedAndRender() {
 function updatePitchPreservation(saveToDB = true) {
     const preserve = pitchToggle.checked;
 
-    if (audio.preservesPitch !== undefined) {
-        audio.preservesPitch = preserve;
-    } else if (audio.mozPreservesPitch !== undefined) {
-        audio.mozPreservesPitch = preserve;
-    } else if (audio.webkitPreservesPitch !== undefined) {
-        audio.webkitPreservesPitch = preserve;
-    }
+    // Set preservesPitch BEFORE playbackRate (Safari ordering requirement)
+    applyPreservesPitch(preserve);
+    // Re-apply current playback rate to ensure it takes effect with new pitch mode
+    audio.playbackRate = audio.playbackRate;
 
     if (saveToDB && currentSongIndex !== -1) {
         const song = songs[currentSongIndex];
