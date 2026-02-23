@@ -65,62 +65,198 @@ class SoundTouchPlayer {
     constructor(context, audioBuffer, onEnd) {
         this.ctx = context;
         this.onEnd = onEnd;
-
-        // SoundTouch.js PitchShifter handles the ScriptProcessorNode connection
-        // and frame extraction from the AudioBuffer.
-        this.shifter = new window.PitchShifter(this.ctx, audioBuffer, 4096, () => {
-            this.pause();
-            if (this.onEnd) this.onEnd();
-        });
+        this.audioBuffer = audioBuffer;
+        this.duration = audioBuffer.duration;
 
         this.isPlaying = false;
+        this.timePlayed = 0;
+        this.speed = 1.0;
+        this.preservePitch = true;
+        this.workletNode = null;
+
+        // Ensure worklet is loaded
+        this.initPromise = this._initWorklet();
     }
 
-    play() {
-        if (!this.isPlaying) {
-            this.shifter.connect(this.ctx.destination);
+    async _initWorklet() {
+        if (!SoundTouchPlayer.workletLoaded) {
+            const res = await fetch('lib/soundtouch.js');
+            const stCode = await res.text();
+
+            const workletCode = `
+                ${stCode}
+                
+                class PhaseVocoderWorklet extends AudioWorkletProcessor {
+                    constructor() {
+                        super();
+                        this.soundTouch = new SoundTouch();
+                        this.soundTouch.pitch = 1.0;
+                        this.soundTouch.tempo = 1.0;
+                        this.soundTouch.rate = 1.0;
+                        
+                        this.leftChannel = new Float32Array(0);
+                        this.rightChannel = new Float32Array(0);
+                        this.sourcePosition = 0;
+                        this.framesSinceLastUpdate = 0;
+                        this.isEnded = false;
+                        
+                        this.filter = new SimpleFilter({
+                            extract: (target, numFrames) => {
+                                const available = Math.max(0, this.leftChannel.length - this.sourcePosition);
+                                const framesToExtract = Math.min(numFrames, available);
+                                for (let i = 0; i < framesToExtract; i++) {
+                                    target[i * 2] = this.leftChannel[this.sourcePosition + i];
+                                    target[i * 2 + 1] = this.rightChannel[this.sourcePosition + i];
+                                }
+                                this.sourcePosition += framesToExtract;
+                                
+                                this.framesSinceLastUpdate += framesToExtract;
+                                if (this.framesSinceLastUpdate >= 4096) {
+                                    this.port.postMessage({ type: 'TIME_UPDATE', position: this.sourcePosition });
+                                    this.framesSinceLastUpdate = 0;
+                                }
+                                
+                                return framesToExtract;
+                            }
+                        }, this.soundTouch);
+                        
+                        this.port.onmessage = (e) => {
+                            const data = e.data;
+                            if (data.type === 'SET_AUDIO') {
+                                this.leftChannel = data.left;
+                                this.rightChannel = data.right || data.left;
+                                this.sourcePosition = 0;
+                                this.filter.sourcePosition = 0;
+                                this.soundTouch.clear();
+                                this.isEnded = false;
+                            } else if (data.type === 'SET_PARAMS') {
+                                this.soundTouch.tempo = data.tempo;
+                                this.soundTouch.rate = data.rate;
+                            } else if (data.type === 'SEEK') {
+                                this.sourcePosition = data.position;
+                                this.filter.sourcePosition = data.position;
+                                this.soundTouch.clear();
+                                this.isEnded = false;
+                            }
+                        };
+                    }
+                    
+                    process(inputs, outputs, parameters) {
+                        if (!this.leftChannel || this.leftChannel.length === 0) return true;
+                        
+                        const leftOutput = outputs[0][0];
+                        const rightOutput = outputs[0][1];
+                        
+                        if (!leftOutput || leftOutput.length === 0) return true;
+                        
+                        const bufferSize = leftOutput.length;
+                        const samples = new Float32Array(bufferSize * 2);
+                        const framesExtracted = this.filter.extract(samples, bufferSize);
+                        
+                        for (let i = 0; i < framesExtracted; i++) {
+                            leftOutput[i] = samples[i * 2];
+                            if (rightOutput) rightOutput[i] = samples[i * 2 + 1];
+                        }
+                        
+                        if (framesExtracted === 0 && this.sourcePosition >= this.leftChannel.length && !this.isEnded) {
+                            this.isEnded = true;
+                            this.port.postMessage({ type: 'END' });
+                        }
+                        
+                        return true;
+                    }
+                }
+                
+                registerProcessor('phase-vocoder-worklet', PhaseVocoderWorklet);
+            `;
+
+            const blob = new Blob([workletCode], { type: 'application/javascript' });
+            const url = URL.createObjectURL(blob);
+            await this.ctx.audioWorklet.addModule(url);
+            SoundTouchPlayer.workletLoaded = true;
+        }
+
+        this.workletNode = new AudioWorkletNode(this.ctx, 'phase-vocoder-worklet', {
+            outputChannelCount: [2]
+        });
+
+        this.workletNode.port.onmessage = (e) => {
+            if (e.data.type === 'TIME_UPDATE') {
+                this.timePlayed = e.data.position / this.ctx.sampleRate;
+            } else if (e.data.type === 'END') {
+                // Ensure UI catches the end just as PitchShifter did
+                this.pause();
+                if (this.onEnd) this.onEnd();
+            }
+        };
+
+        // Send AudioBuffer to worklet
+        this.workletNode.port.postMessage({
+            type: 'SET_AUDIO',
+            left: this.audioBuffer.getChannelData(0),
+            right: this.audioBuffer.numberOfChannels > 1 ? this.audioBuffer.getChannelData(1) : this.audioBuffer.getChannelData(0)
+        });
+
+        // Initial setup
+        this.setSpeedAndPitch(this.speed, this.preservePitch);
+    }
+
+    async play() {
+        this._playRequested = true;
+        await this.initPromise;
+        if (!this.isPlaying && this._playRequested) {
+            this.workletNode.connect(this.ctx.destination);
             if (this.ctx.state === 'suspended') this.ctx.resume();
             this.isPlaying = true;
         }
     }
 
     pause() {
-        if (this.isPlaying) {
-            this.shifter.disconnect();
+        this._playRequested = false;
+        if (this.isPlaying && this.workletNode) {
+            this.workletNode.disconnect();
             this.isPlaying = false;
         }
     }
 
-    seek(percentage) {
-        this.shifter.percentagePlayed = Math.max(0, Math.min(percentage, 100)) / 100;
+    async seek(percentage) {
+        await this.initPromise;
+        const targetTime = (Math.max(0, Math.min(percentage, 100)) / 100) * this.duration;
+        this.timePlayed = targetTime;
+        const position = Math.floor(targetTime * this.ctx.sampleRate);
+        this.workletNode.port.postMessage({ type: 'SEEK', position });
     }
 
     get currentTime() {
-        return this.shifter.timePlayed;
+        return this.timePlayed;
     }
 
-    get duration() {
-        return this.shifter.duration;
-    }
+    async setSpeedAndPitch(speed, preservePitch) {
+        this.speed = Math.max(0.25, Math.min(speed, 4.0));
+        this.preservePitch = preservePitch;
 
-    setSpeedAndPitch(speed, preservePitch) {
-        // Enforce safe boundaries to prevent engine implosion
-        speed = Math.max(0.25, Math.min(speed, 4.0));
+        await this.initPromise;
+
+        let tempo = 1.0;
+        let rate = 1.0;
 
         if (preservePitch) {
-            this.shifter.tempo = speed; // Changes speed, maintains pitch
-            this.shifter.rate = 1.0;
+            tempo = this.speed;
         } else {
-            this.shifter.rate = speed;  // Changes speed AND pitch
-            this.shifter.tempo = 1.0;
+            rate = this.speed;
         }
+
+        this.workletNode.port.postMessage({ type: 'SET_PARAMS', tempo, rate });
     }
 
     destroy() {
         this.pause();
-        this.shifter.off();
+        if (this.workletNode) {
+            this.workletNode.port.onmessage = null;
+        }
     }
 }
+SoundTouchPlayer.workletLoaded = false;
 
 /**
  * Safely update one or more fields on a song record in IndexedDB.
