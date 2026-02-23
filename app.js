@@ -237,8 +237,32 @@ function moveSong(index, direction, event) {
     store.put(s2);
 
     transaction.oncomplete = () => {
-        // Defer DOM update so Safari click event processes cleanly
-        setTimeout(() => renderSongList(), 0);
+        // Direct DOM manipulation instead of full render to fix iOS Safari click-loss bug
+        const items = Array.from(songList.children);
+        const item1 = items[index];
+        const item2 = items[newIndex];
+
+        if (item1 && item2) {
+            // Swap in DOM
+            if (direction === -1) {
+                songList.insertBefore(item1, item2);
+            } else {
+                songList.insertBefore(item2, item1);
+            }
+
+            // Update indices
+            item1.setAttribute('data-index', newIndex);
+            item2.setAttribute('data-index', index);
+
+            // Fix disabled states for first/last items
+            const newItems = Array.from(songList.children);
+            newItems.forEach((li, idx) => {
+                const upBtn = li.querySelector('.move-up');
+                const downBtn = li.querySelector('.move-down');
+                if (upBtn) upBtn.disabled = (idx === 0);
+                if (downBtn) downBtn.disabled = (idx === newItems.length - 1);
+            });
+        }
     };
 }
 
@@ -1616,14 +1640,47 @@ function movePlaylistSong(index, direction, event) {
         const songIds = playlist.songIds;
         // The 'songs' array is sorted by the order in playlist.songIds
         // So we can swap the IDs at 'index' and 'newIndex' directly
-
         const temp = songIds[index];
         songIds[index] = songIds[newIndex];
         songIds[newIndex] = temp;
 
+        // Also update the local 'songs' array so playSong(index) works correctly after move
+        const tempSong = songs[index];
+        songs[index] = songs[newIndex];
+        songs[newIndex] = tempSong;
+
+        // Update currentSongIndex if the playing song moved
+        if (currentSongIndex === index) currentSongIndex = newIndex;
+        else if (currentSongIndex === newIndex) currentSongIndex = index;
+
         playlist.songIds = songIds;
         store.put(playlist).onsuccess = () => {
-            setTimeout(() => loadSongs(), 0);
+            // Direct DOM manipulation instead of full render to fix iOS Safari click-loss bug
+            const items = Array.from(songList.children);
+            const item1 = items[index];
+            const item2 = items[newIndex];
+
+            if (item1 && item2) {
+                // Swap in DOM
+                if (direction === -1) {
+                    songList.insertBefore(item1, item2);
+                } else {
+                    songList.insertBefore(item2, item1);
+                }
+
+                // Update indices
+                item1.setAttribute('data-index', newIndex);
+                item2.setAttribute('data-index', index);
+
+                // Fix disabled states for first/last items
+                const newItems = Array.from(songList.children);
+                newItems.forEach((li, idx) => {
+                    const upBtn = li.querySelector('.move-up');
+                    const downBtn = li.querySelector('.move-down');
+                    if (upBtn) upBtn.disabled = (idx === 0);
+                    if (downBtn) downBtn.disabled = (idx === newItems.length - 1);
+                });
+            }
         };
     };
 }
