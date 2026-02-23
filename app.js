@@ -1184,6 +1184,7 @@ resetSpeedBtn.addEventListener('click', () => {
     updateSpeed();
 });
 
+pitchToggle.addEventListener('click', () => updatePitchPreservation(true));
 pitchToggle.addEventListener('change', () => updatePitchPreservation(true));
 playbackModeBtn.addEventListener('click', togglePlaybackMode);
 const modalPlaybackModeBtnEl = document.getElementById('modal-playback-mode-toggle');
