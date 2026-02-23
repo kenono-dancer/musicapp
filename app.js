@@ -458,6 +458,11 @@ window.addEventListener('orientationchange', () => {
     setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
 });
 
+// A tiny silent MP3 base64 to trick iOS Safari out of Silent Mode (Manner Mode)
+const SILENT_MP3 = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU5LjI3LjEwMAAAAAAAAAAAAAAA//twwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADBwsPEx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fPz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/////wAAAABMYXZjNTkuMzcuMTAwAAAAAAAAAAAAAAAAJAXAAAAAAAEgAFB1xNwAAAAAAAAAAAAAAAAAAAAA//twxAADMAAACcAAAABIQAAJwAAAAEAAAP/7cMQAAzAAAAnAAAAASEAAACcAAAAA//twxAADMAAACcAAAABIQAAJwAAAAEAAAP/7cMQAAzAAAAnAAAAASEAAACcAAAAA=";
+let hasUnlockedIOSAudio = false;
+let unlockAudioEl = null;
+
 // Single strict AudioContext initializer
 function unlockAudioContext() {
     if (!audioCtx) {
@@ -474,6 +479,16 @@ function unlockAudioContext() {
     gain.connect(audioCtx.destination);
     osc.start(0);
     osc.stop(0);
+
+    if (!hasUnlockedIOSAudio) {
+        unlockAudioEl = document.createElement('audio');
+        unlockAudioEl.src = SILENT_MP3;
+        unlockAudioEl.loop = true;
+        unlockAudioEl.volume = 1.0; // Must not be muted to override hardware switch
+        unlockAudioEl.setAttribute('playsinline', 'true');
+        unlockAudioEl.play().catch(e => console.warn('[Audio] Silent unlock failed', e));
+        hasUnlockedIOSAudio = true;
+    }
 }
 
 async function playSong(index) {
@@ -497,7 +512,6 @@ async function playSong(index) {
     }
 
     // Prepare native audio (muted) to retain iOS background lock and MediaSession support
-    // (CYCLE 1 VERIFICATION: Temporary disabling to check for AVAudioSession conflict)
     audio.muted = true;
     let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
         ? `audio/${song.id}`
@@ -506,7 +520,7 @@ async function playSong(index) {
         currentObjectURL = audioUrl;
     }
     audio.src = audioUrl;
-    // audio.play().catch(e => console.warn('Native fallback play failed:', e));
+    audio.play().catch(e => console.warn('Native fallback play failed:', e));
 
     loadingOverlay.classList.remove('hidden');
 
@@ -550,18 +564,6 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
         }
-
-        // CYCLE 2 VERIFICATION: Play a 0.2s raw beep to prove AudioContext is alive
-        const testOsc = audioCtx.createOscillator();
-        const testGain = audioCtx.createGain();
-        testOsc.type = 'sine';
-        testOsc.frequency.value = 440; // A4
-        testGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        testGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-        testOsc.connect(testGain);
-        testGain.connect(audioCtx.destination);
-        testOsc.start();
-        testOsc.stop(audioCtx.currentTime + 0.2);
 
     } catch (err) {
         console.error('[Audio] Decode failed:', err);
