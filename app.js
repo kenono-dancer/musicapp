@@ -266,16 +266,16 @@ function renderSongList() {
                     </div>
                 </div>
                 <div class="song-actions">
-                    <button class="add-to-playlist-btn" title="Add to Playlist">
+                    <button class="add-to-playlist-btn" title="Add to Playlist" onclick="openAddToPlaylistModal(${song.id}, event)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
-                    <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''}>
+                    <button class="reorder-btn move-up" ${isFirst ? 'disabled' : ''} onclick="${isPlaylistView ? `movePlaylistSong(${index}, -1, event)` : `moveSong(${index}, -1, event)`}">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5z"/></svg>
                     </button>
-                    <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''}>
+                    <button class="reorder-btn move-down" ${isLast ? 'disabled' : ''} onclick="${isPlaylistView ? `movePlaylistSong(${index}, 1, event)` : `moveSong(${index}, 1, event)`}">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
                     </button>
-                    <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}">
+                    <button class="delete-btn" title="${isPlaylistView ? 'Remove from Playlist' : 'Delete Song'}" onclick="${isPlaylistView ? `handleRemoveFromPlaylist(${currentPlaylistId}, ${song.id}, event)` : `deleteSong(${song.id}, event)`}">
                         ${isPlaylistView
                     ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
                     : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'}
@@ -283,31 +283,10 @@ function renderSongList() {
                 </div>
             `;
 
-            // Per-button touchend listeners for iOS Safari compatibility
-            // iOS cancels click delegation when the DOM is rebuilt - touchend fires before that
-            const addTouchHandler = (selector, action) => {
-                const btn = li.querySelector(selector);
-                if (btn && !btn.disabled) {
-                    btn.addEventListener('touchend', (e) => {
-                        e.preventDefault(); // Prevent the ghost click that follows touchend
-                        action();
-                    }, { once: true });
-                }
-            };
-
-            const isPlaylistViewLocal = currentPlaylistId !== null;
-            if (!isFirst) {
-                addTouchHandler('.move-up', () => isPlaylistViewLocal ? movePlaylistSong(index, -1, null) : moveSong(index, -1, null));
-            }
-            if (!isLast) {
-                addTouchHandler('.move-down', () => isPlaylistViewLocal ? movePlaylistSong(index, 1, null) : moveSong(index, 1, null));
-            }
-
             // Click handler for playing song (not on buttons)
             li.addEventListener('click', (e) => {
                 if (e.target.closest('button')) return;
-                const idx = parseInt(li.getAttribute('data-index'));
-                playSong(idx);
+                playSong(index);
             });
 
             songList.appendChild(li);
@@ -318,33 +297,8 @@ function renderSongList() {
     }
 }
 
-// Event Delegation for Song List Buttons
-// This prevents duplicate event listeners when renderSongList() is called multiple times
-songList.addEventListener('click', (e) => {
-    const button = e.target.closest('button');
-    if (!button) return;
-
-    const songItem = button.closest('.song-item');
-    if (!songItem) return;
-
-    const index = parseInt(songItem.getAttribute('data-index'));
-    if (isNaN(index)) return;
-
-    const song = songs[index];
-    if (!song) return;
-
-    const isPlaylistView = currentPlaylistId !== null;
-
-    if (button.classList.contains('add-to-playlist-btn')) {
-        openAddToPlaylistModal(song.id, e);
-    } else if (button.classList.contains('move-up')) {
-        isPlaylistView ? movePlaylistSong(index, -1, e) : moveSong(index, -1, e);
-    } else if (button.classList.contains('move-down')) {
-        isPlaylistView ? movePlaylistSong(index, 1, e) : moveSong(index, 1, e);
-    } else if (button.classList.contains('delete-btn')) {
-        isPlaylistView ? handleRemoveFromPlaylist(currentPlaylistId, song.id, e) : deleteSong(song.id, e);
-    }
-});
+// Note: Button actions are handled by inline onclick attributes in renderSongList()
+// The li click handler is added per-item in renderSongList for song playback
 
 // Prevent touch events from bubbling to parent (for mobile)
 songList.addEventListener('touchstart', (e) => {
