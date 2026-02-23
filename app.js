@@ -381,9 +381,10 @@ function renderSongList() {
                 });
             }
 
-            // Click the row (not buttons) to play
+            // Click the row (not active buttons) to play
+            // Note: use button:not([disabled]) so tapping a disabled reorder button still plays the song
             li.addEventListener('click', (e) => {
-                if (e.target.closest('button')) return;
+                if (e.target.closest('button:not([disabled])')) return;
                 playSong(capturedIndex);
             });
 
