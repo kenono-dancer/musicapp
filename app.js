@@ -71,23 +71,20 @@ let masterGain = null;    // GainNode
  *   - release 250 ms      : natural, musical release
  */
 function initAudioPipeline() {
-    if (audioCtx) {
-        // Already built — just ensure context is running (iOS may suspend it)
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        return;
-    }
+    // Round 4: Guard already built — just return (resume is handled by callers)
+    if (audioCtx) return;
 
     try {
         // Use device native sample rate to avoid resampling artifacts
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({
             latencyHint: 'interactive',
-            // Do NOT force sampleRate — let the device use its native rate
         });
 
-        // Route <audio> element through the graph (created only once)
+        // Route <audio> element through the graph (created only ONCE per audio element)
         mediaSource = audioCtx.createMediaElementSource(audio);
 
         // DynamicsCompressor — prevents clipping, maximises loudness headroom
+        // Spotify-style values: threshold -18dB, knee 6dB, ratio 3:1, attack 3ms, release 250ms
         compressor = audioCtx.createDynamicsCompressor();
         compressor.threshold.value = -18;
         compressor.knee.value = 6;
@@ -95,19 +92,23 @@ function initAudioPipeline() {
         compressor.attack.value = 0.003;
         compressor.release.value = 0.25;
 
-        // Master gain — keep at 1.0 (compressor handles level management)
+        // Master gain — 1.0 (compressor handles level management)
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 1.0;
 
-        // Connect the chain
+        // Connect: audio → compressor → gain → speakers
         mediaSource.connect(compressor);
         compressor.connect(masterGain);
         masterGain.connect(audioCtx.destination);
 
         console.log('[Audio] Pipeline initialised. Sample rate:', audioCtx.sampleRate, 'Hz');
     } catch (err) {
+        // Round 4: Reset ALL refs on failure to prevent partial connection state
         console.warn('[Audio] Web Audio API unavailable, falling back to native playback:', err);
         audioCtx = null;
+        mediaSource = null;
+        compressor = null;
+        masterGain = null;
     }
 }
 
@@ -431,7 +432,7 @@ window.addEventListener('orientationchange', () => {
     setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
 });
 
-function playSong(index) {
+async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
 
     currentSongIndex = index;
@@ -443,12 +444,23 @@ function playSong(index) {
         currentObjectURL = null;
     }
 
-    // ── Web Audio Pipeline ─────────────────────────────────────────────────
-    // Build or resume the DynamicsCompressor pipeline (lazy init on first gesture)
+    // ── Round 1: Web Audio Pipeline ────────────────────────────────────────
+    // Initialize the DynamicsCompressor pipeline on first user gesture
     initAudioPipeline();
 
+    // ── Round 2: AWAIT resume() before play() ─────────────────────────────
+    // On iOS Safari, AudioContext starts suspended. audio.play() will produce
+    // no sound if the context is suspended because the audio element is now
+    // routed THROUGH the AudioContext graph. We MUST await resume() first.
+    if (audioCtx && audioCtx.state === 'suspended') {
+        try {
+            await audioCtx.resume();
+        } catch (err) {
+            console.warn('[Audio] Could not resume AudioContext:', err);
+        }
+    }
+
     // Use Service Worker URL for iOS audio quality (Range Request support)
-    // Fall back to blob URL if SW is not available
     let audioUrl;
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
         audioUrl = `audio/${song.id}`;
@@ -463,22 +475,27 @@ function playSong(index) {
     const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
     const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
 
-    // ── IMPORTANT: Set preservesPitch BEFORE playbackRate (Safari requires this order) ──
+    // ── Round 3: Set preservesPitch BEFORE playbackRate (Safari requirement) ──
     applyPreservesPitch(savedPitch);
     audio.playbackRate = savedSpeed;
 
-    // Resume AudioContext (iOS PWA may suspend it between interactions)
-    if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
+    // ── Round 4: Play with proper error handling ───────────────────────────
+    try {
+        await audio.play();
+        updatePlayPauseUI(true);
+    } catch (err) {
+        console.error('[Audio] Playback failed:', err);
+        // If AudioContext caused the failure, fall back to direct play
+        if (audioCtx) {
+            try {
+                await audioCtx.resume();
+                await audio.play();
+                updatePlayPauseUI(true);
+            } catch (fallbackErr) {
+                console.error('[Audio] Fallback playback also failed:', fallbackErr);
+            }
+        }
     }
-
-    audio.play()
-        .then(() => {
-            updatePlayPauseUI(true);
-            // Re-resume in case play() itself triggered suspension
-            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-        })
-        .catch(e => console.error('Playback failed', e));
 
     currentTitle.textContent = song.name;
     modalSongTitle.textContent = song.name;
@@ -488,19 +505,16 @@ function playSong(index) {
     speedValue.textContent = savedSpeed.toFixed(2);
     pitchToggle.checked = savedPitch;
 
-    updateSpeed(false); // Update UI text only, speed already set
-    updatePitchPreservation(false); // Update UI/Audio property
+    updateSpeed(false);
+    updatePitchPreservation(false);
+    renderSongList();
 
-    renderSongList(); // Retrieve active state
-
-    // Setup metadata
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
             title: song.name,
             artist: 'My Music',
             album: 'Offline Player'
         });
-
         navigator.mediaSession.setActionHandler('play', () => { audio.play(); });
         navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); });
         navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
@@ -532,9 +546,16 @@ function generateSeekMarkers() {
 }
 
 function togglePlayPause() {
+    // ── Round 2: Resume AudioContext on every play attempt ──
+    // iOS may suspend the AudioContext between user interactions;
+    // resume() here ensures audio flows through the pipeline immediately.
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+
     if (audio.paused) {
         if (currentSongIndex === -1 && songs.length > 0) playSong(0);
-        else audio.play();
+        else audio.play().catch(e => console.error('[Audio] Play failed:', e));
     } else {
         audio.pause();
     }
@@ -598,35 +619,17 @@ function applyPreservesPitch(preserve) {
 function updateSpeed(saveToDB = true) {
     const speed = parseFloat(speedSlider.value);
 
-    // Smooth ramp to new speed (prevents click/zipper artifacts on iOS)
-    // Falls back to instant assignment when audio isn't playing or on older browsers
-    try {
-        if (audioCtx && !audio.paused) {
-            // Very short ramp (50ms) — imperceptible to humans but eliminates artifacts
-            const rampTime = audioCtx.currentTime + 0.05;
-            // playbackRate cannot use AudioParam ramp directly on MediaElement;
-            // instead we step in small increments via a micro-ramp wrapper
-            const startRate = audio.playbackRate;
-            const steps = 5;
-            for (let i = 1; i <= steps; i++) {
-                setTimeout(() => {
-                    audio.playbackRate = startRate + (speed - startRate) * (i / steps);
-                }, i * 10);
-            }
-        } else {
-            audio.playbackRate = speed;
-        }
-    } catch {
-        audio.playbackRate = speed;
-    }
+    // ── Round 3: Simple direct assignment ─────────────────────────────────
+    // The setTimeout-based ramp caused race conditions on iOS where multiple
+    // timers would fire simultaneously after song change, causing glitches.
+    // The native HTMLMediaElement playbackRate change is already smooth enough.
+    audio.playbackRate = speed;
 
     speedValue.textContent = speed.toFixed(2);
 
     if (saveToDB && currentSongIndex !== -1) {
         const song = songs[currentSongIndex];
         song.speed = speed;
-
-        // Save to DB
         const transaction = db.transaction(['songs'], 'readwrite');
         const store = transaction.objectStore('songs');
         store.put(song);
