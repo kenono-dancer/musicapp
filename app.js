@@ -50,48 +50,10 @@ let rewindInterval = null;
 let isLongPressing = false;
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
-// ─── Web Audio API Pipeline ───────────────────────────────────────────────────
-let audioCtx = null;
-let mediaSource = null;
-let compressor = null;
-let masterGain = null;
-
-/**
- * Build the Web Audio processing chain (lazy, called on first user gesture):
- *   <audio> → MediaElementAudioSourceNode → DynamicsCompressor → GainNode → speakers
- *
- * Compressor settings (Spotify-style):
- *   threshold -18 dBFS, knee 6 dB, ratio 3:1, attack 3 ms, release 250 ms
- */
-function initAudioPipeline() {
-    if (audioCtx) return; // Already built; callers handle resume() if needed
-
-    try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-            latencyHint: 'interactive',
-        });
-        mediaSource = audioCtx.createMediaElementSource(audio);
-
-        compressor = audioCtx.createDynamicsCompressor();
-        compressor.threshold.value = -18;
-        compressor.knee.value = 6;
-        compressor.ratio.value = 3;
-        compressor.attack.value = 0.003;
-        compressor.release.value = 0.25;
-
-        masterGain = audioCtx.createGain();
-        masterGain.gain.value = 1.0;
-
-        mediaSource.connect(compressor);
-        compressor.connect(masterGain);
-        masterGain.connect(audioCtx.destination);
-
-        console.log('[Audio] Pipeline ready. Sample rate:', audioCtx.sampleRate, 'Hz');
-    } catch (err) {
-        console.warn('[Audio] Web Audio API unavailable, using native playback:', err);
-        audioCtx = null; mediaSource = null; compressor = null; masterGain = null;
-    }
-}
+// ─── Native Audio Handling ────────────────────────────────────────────────────
+// As of v2.95, we removed the Web Audio API pipeline to restore OS-level
+// pitch preservation and eliminate resampling noise during speed changes.
+// The `<audio>` element now plays natively through the device audio engine.
 
 /**
  * Safely update one or more fields on a song record in IndexedDB.
@@ -441,14 +403,6 @@ function playSong(index) {
         currentObjectURL = null;
     }
 
-    // Initialize the Web Audio pipeline (first call only)
-    initAudioPipeline();
-
-    // resume() must be fire-and-forget — awaiting it breaks iOS user gesture context
-    if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(e => console.warn('[Audio] resume failed:', e));
-    }
-
     // Prefer Service Worker URL (Range Request support) over direct blob URL
     let audioUrl;
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -479,18 +433,10 @@ function playSong(index) {
         }
     };
 
-    // Call play() immediately — still within synchronous gesture chain
+    // Call play() within the synchronous gesture chain
     audio.play()
         .then(() => updatePlayPauseUI(true))
-        .catch(err => {
-            console.error('[Audio] Playback failed:', err);
-            setTimeout(() => {
-                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-                audio.play()
-                    .then(() => updatePlayPauseUI(true))
-                    .catch(e => console.error('[Audio] Retry also failed:', e));
-            }, 150);
-        });
+        .catch(err => console.error('[Audio] Playback failed:', err));
 
     currentTitle.textContent = song.name;
     modalSongTitle.textContent = song.name;
@@ -541,13 +487,6 @@ function generateSeekMarkers() {
 }
 
 function togglePlayPause() {
-    // ── Round 2: Resume AudioContext on every play attempt ──
-    // iOS may suspend the AudioContext between user interactions;
-    // resume() here ensures audio flows through the pipeline immediately.
-    if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
-
     if (audio.paused) {
         if (currentSongIndex === -1 && songs.length > 0) playSong(0);
         else audio.play().catch(e => console.error('[Audio] Play failed:', e));
@@ -607,22 +546,38 @@ function playPrev() {
  */
 function applyPreservesPitch(preserve) {
     if (audio.preservesPitch !== undefined) audio.preservesPitch = preserve;
-    else if (audio.mozPreservesPitch !== undefined) audio.mozPreservesPitch = preserve;
-    else if (audio.webkitPreservesPitch !== undefined) audio.webkitPreservesPitch = preserve;
+    if (audio.mozPreservesPitch !== undefined) audio.mozPreservesPitch = preserve;
+    if (audio.webkitPreservesPitch !== undefined) audio.webkitPreservesPitch = preserve;
 }
+
+let speedUpdateFrame = null;
 
 function updateSpeed(saveToDB = true) {
     const speed = parseFloat(speedSlider.value);
-    audio.playbackRate = speed;
+
+    // UI updates instantly for responsive feel
     speedValue.textContent = speed.toFixed(2);
 
     if (saveToDB && currentSongIndex !== -1) {
         songs[currentSongIndex].speed = speed;
         safeDbUpdate(songs[currentSongIndex].id, { speed });
     }
+
+    // ── C7: Debounce the actual audio engine update ──
+    // The range slider fires 'input' dozens of times per second. 
+    // Rapidly changing playbackRate overloads the iOS Resampler, causing loud
+    // crackle/pop/zipper noise and buffer underruns. We throttle the actual
+    // hardware assignment using requestAnimationFrame.
+    if (speedUpdateFrame) cancelAnimationFrame(speedUpdateFrame);
+    speedUpdateFrame = requestAnimationFrame(() => {
+        // Enforce Safari's strict ordering rules: preservesPitch must be active *before* rate change
+        const shouldPreserve = pitchToggle.checked;
+        applyPreservesPitch(shouldPreserve);
+        audio.playbackRate = speed;
+    });
 }
 
-// Separate function to re-render list only on drag end
+// Separate function to re-render list only on drag end (change event)
 function updateSpeedAndRender() {
     updateSpeed(true);
     renderSongList();
@@ -630,8 +585,10 @@ function updateSpeedAndRender() {
 
 function updatePitchPreservation(saveToDB = true) {
     const preserve = pitchToggle.checked;
+
+    // C4 & C5: Safari requires setting preservesPitch, THEN forcing a playbackRate re-assignment
     applyPreservesPitch(preserve);
-    audio.playbackRate = audio.playbackRate; // Re-apply to activate new pitch mode
+    audio.playbackRate = parseFloat(speedSlider.value);
 
     if (saveToDB && currentSongIndex !== -1) {
         songs[currentSongIndex].preservePitch = preserve;
