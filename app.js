@@ -610,26 +610,6 @@ function unlockAudioContext(forceUnlock = false) {
 }
 
 
-function playUIFeedback() {
-    if (!audioCtx || audioCtx.state !== 'running') return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    
-    // Soft, pleasant "click/tick" sound
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.05);
-    
-    // Very low volume, imperceptible but provides feedback
-    gain.gain.setValueAtTime(0.03, audioCtx.currentTime); 
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
-    
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.05);
-}
 
 async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
@@ -663,7 +643,6 @@ async function playSong(index) {
     audio.play().catch(e => console.warn('Native fallback play failed:', e));
 
     loadingOverlay.classList.remove('hidden');
-    playUIFeedback();
 
     try {
         let arrayBuffer;
