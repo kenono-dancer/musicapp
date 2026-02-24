@@ -631,8 +631,11 @@ async function playSong(index) {
         activePlayer = null;
     }
 
-    // Restore native audio (muted) to retain iOS background lock and MediaSession support
-    audio.muted = true;
+    // Optimized native fallback for iOS background persistence.
+    // Setting volume to 0.001 and muted to false is more reliable for keep-alive on some iOS versions.
+    audio.muted = false;
+    audio.volume = 0.001;
+
     let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
         ? `audio/${song.id}`
         : URL.createObjectURL(song.blob);
@@ -683,6 +686,13 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                if (details.seekTime !== undefined && activePlayer) {
+                    const percentage = (details.seekTime / activePlayer.duration) * 100;
+                    activePlayer.seek(percentage);
+                    updateMediaSessionPosition();
+                }
+            });
         }
 
     } catch (err) {
@@ -724,7 +734,9 @@ function togglePlayPause() {
         updatePlayPauseUI(false);
     } else {
         activePlayer.play();
-        // audio.play().catch(e => console.warn('Native fallback play failed:', e));
+        // Sync native audio time approximately to keep the session alive and prevent suspension
+        audio.currentTime = activePlayer.currentTime % (audio.duration || 1);
+        audio.play().catch(e => console.warn('Native fallback play failed:', e));
         updatePlayPauseUI(true);
     }
 }
@@ -733,9 +745,11 @@ function updatePlayPauseUI(isPlaying) {
     if (isPlaying) {
         playIcon.classList.add('hidden');
         pauseIcon.classList.remove('hidden');
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     } else {
         playIcon.classList.remove('hidden');
         pauseIcon.classList.add('hidden');
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     }
 
     // Sync Modal Buttons
@@ -745,6 +759,20 @@ function updatePlayPauseUI(isPlaying) {
     } else {
         modalPlayIcon.classList.remove('hidden');
         modalPauseIcon.classList.add('hidden');
+    }
+}
+
+function updateMediaSessionPosition() {
+    if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && activePlayer) {
+        try {
+            navigator.mediaSession.setPositionState({
+                duration: activePlayer.duration,
+                playbackRate: 1.0, // Force 1.0 because activePlayer handles speed internally
+                position: activePlayer.currentTime
+            });
+        } catch (e) {
+            console.warn('setPositionState error:', e);
+        }
     }
 }
 
@@ -1070,9 +1098,13 @@ function loopTimeUpdate() {
             // Update Modal Slider
             modalSeekSlider.value = validPercent;
             modalCurrentTime.textContent = formatTime(current);
+            durationEl.textContent = formatTime(duration);
+            updateSeekMarkers();            // Update Background MediaSession Position (throttle because setPositionState can be expensive)
+            if (Math.floor(current) !== Math.floor(activePlayer._lastMediaSessionUpdate || 0)) {
+                updateMediaSessionPosition();
+                activePlayer._lastMediaSessionUpdate = current;
+            }
         }
-        durationEl.textContent = formatTime(duration);
-        updateSeekMarkers();
     }
     timeUpdateFrame = requestAnimationFrame(loopTimeUpdate);
 }
