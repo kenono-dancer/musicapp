@@ -15,10 +15,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <script>
         // Single source of truth for the app version
-        const APP_VERSION = '2.98.17';
-
-        // Dynamically load the stylesheet and script with the correct version to prevent caching issues
-        document.write(`<link rel="stylesheet" href="style.css?v=${APP_VERSION}">`);
+        const APP_VERSION = '2.100.1';
+    </script>
+    <link rel="stylesheet" href="style.css?v=2.100.1">
+    <script>
+        // Global Error Monitor to catch initialization crashes
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            console.error('Core Error:', msg, url, lineNo);
+            // alert('Critical Error during App Load:\n' + msg + '\nLine: ' + lineNo);
+            return false;
+        };
     </script>
 </head>
 
@@ -418,10 +424,7 @@
                 </div>
             </div>
         </div>
-        <script>
-            // Bypass aggressive Safari and SW cache by appending the version dynamically
-            document.write(`<script src="app.js?v=${APP_VERSION}"><\/script>`);
-        </script>
+        <script src="app.js?v=2.100.1"></script>
         <script>
             // Emergency Fallback for Settings
             window.openSettings = function () {
