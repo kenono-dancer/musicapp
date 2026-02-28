@@ -631,10 +631,9 @@ async function playSong(index) {
         activePlayer = null;
     }
 
-    // Optimized native fallback for iOS background persistence.
-    // Setting volume to 0.001 and muted to false is more reliable for keep-alive on some iOS versions.
-    audio.muted = false;
-    audio.volume = 0.001;
+    // Keep native audio muted — it exists solely to hold the iOS MediaSession open.
+    // Using volume 0.001 caused audible doubling with the AudioWorklet output.
+    audio.muted = true;
 
     let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
         ? `audio/${song.id}`
@@ -734,8 +733,6 @@ function togglePlayPause() {
         updatePlayPauseUI(false);
     } else {
         activePlayer.play();
-        // Sync native audio time approximately to keep the session alive and prevent suspension
-        audio.currentTime = activePlayer.currentTime % (audio.duration || 1);
         audio.play().catch(e => console.warn('Native fallback play failed:', e));
         updatePlayPauseUI(true);
     }
