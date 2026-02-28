@@ -49,6 +49,8 @@ let rewindInterval = null;
 let isLongPressing = false;
 let isSeeking = false; // Missing state for seek slider interaction
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
+let isTransitioning = false; // Multi-tap prevention flag
+let renderFrame = null; // Debounce frame for song list rendering
 
 // ─── Phase Vocoder Audio Engine (SoundTouchJS) ─────────────────────────────
 // iOS Safari's native <audio> time-stretching produces metallic noise when
@@ -277,6 +279,13 @@ function moveSong(index, direction, event) {
 }
 
 function renderSongList() {
+    if (renderFrame) cancelAnimationFrame(renderFrame);
+    renderFrame = requestAnimationFrame(() => {
+        _performRenderSongList();
+    });
+}
+
+function _performRenderSongList() {
     songList.innerHTML = '';
     if (songs.length === 0) {
         emptyState.classList.remove('hidden');
@@ -430,7 +439,9 @@ function updatePlayPauseUI(isPlaying) {
 
 async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
+    if (isTransitioning) return; // Prevent overlapping requests
 
+    isTransitioning = true;
     const song = songs[index];
     currentSongIndex = index;
 
@@ -525,6 +536,7 @@ async function playSong(index) {
         clearTimeout(failsafe);
     } catch (error) {
         clearTimeout(failsafe);
+        if (error.name === 'AbortError') return;
         // Fallback: If SW Proxy failed, fallback to direct Blob ObjectURL.
         // We absolutely AVOID Base64 Data URIs as they mathematically freeze the main thread for large WAVs.
         if (useSW) {
@@ -536,6 +548,7 @@ async function playSong(index) {
             try {
                 await mainAudio.play();
             } catch (fallbackError) {
+                if (fallbackError.name === 'AbortError') return;
                 loadingOverlay.classList.add('hidden');
                 mainAudio.removeEventListener('playing', onPlayStarted);
 
@@ -555,6 +568,8 @@ async function playSong(index) {
             alert(`Failed to play ${ext.toUpperCase()}.\nError: ${error.name}\nMessage: ${error.message}`);
             updatePlayPauseUI(false);
         }
+    } finally {
+        isTransitioning = false;
     }
 }
 
@@ -734,15 +749,22 @@ fileInput.addEventListener('change', async (e) => {
 });
 
 function togglePlayPause() {
+    if (isTransitioning) return;
+
     if (mainAudio.paused) {
         if (mainAudio.src) {
+            isTransitioning = true;
             mainAudio.play().then(() => {
                 updatePlayPauseUI(true);
             }).catch(e => {
-                console.error("Manual toggle play failed:", e);
-                if (e.name === 'NotAllowedError') {
-                    alert("Playback blocked. Please tap again to start.");
+                if (e.name !== 'AbortError') {
+                    console.error("Manual toggle play failed:", e);
+                    if (e.name === 'NotAllowedError') {
+                        alert("Playback blocked. Please tap again to start.");
+                    }
                 }
+            }).finally(() => {
+                isTransitioning = false;
             });
         }
     } else {
