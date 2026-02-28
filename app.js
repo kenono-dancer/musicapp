@@ -474,7 +474,7 @@ async function playSong(index) {
     let audioUrl = URL.createObjectURL(safeBlob);
     currentObjectURL = audioUrl;
 
-    let swUrl = `audio/${song.id}?t=${Date.now()}`;
+    let swUrl = `audio/${song.id}`;
     let useSW = ('serviceWorker' in navigator && navigator.serviceWorker.controller);
 
     // Primary source
