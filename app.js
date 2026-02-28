@@ -958,6 +958,26 @@ modalSeekSlider.addEventListener('change', () => {
     if (mainAudio.src) mainAudio.currentTime = time;
 });
 
+// Generate Seek Markers (Modal - Initial Layout)
+function generateSeekMarkers() {
+    modalSeekMarkers.innerHTML = '';
+    const duration = mainAudio.duration || 0;
+    if (!duration || !isFinite(duration)) return;
+
+    for (let i = 0; i <= 5; i++) {
+        const percent = i * 20;
+        const time = (percent / 100) * duration;
+
+        const marker = document.createElement('div');
+        marker.className = 'seek-marker';
+        marker.style.left = `${percent}%`;
+        marker.setAttribute('data-time', formatTime(time));
+
+        modalSeekMarkers.appendChild(marker);
+    }
+    modalDuration.textContent = formatTime(duration);
+}
+
 // Update Seek Markers (Modal - Update Text)
 function updateSeekMarkers() {
     const duration = mainAudio.duration || 0;
