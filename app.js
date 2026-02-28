@@ -66,6 +66,17 @@ streamAudio.id = 'stream-audio';
 streamAudio.setAttribute('playsinline', '');
 document.body.appendChild(streamAudio);
 
+// ─── MediaSession Activator (Lock Screen Hook) ──────────────────────────────
+// iOS Safari strictly requires an HTML <audio> tag with a concrete `src` file
+// to expose the system lock screen Media UI and headphone controls. `srcObject`
+// streams do not trigger it alone. Thus, we play a silent Base64 WAV file
+// concurrently to trick iOS into showing the MediaSession interface.
+const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+const lockScreenAudio = new Audio();
+lockScreenAudio.src = SILENT_WAV_BASE64;
+lockScreenAudio.loop = true;
+lockScreenAudio.volume = 1.0;
+
 let audioCtx = null;
 let activePlayer = null;
 let mediaStreamDestination = null;
@@ -420,6 +431,8 @@ function deleteSong(id, event) {
     if (idx === currentSongIndex) {
         streamAudio.pause();
         streamAudio.srcObject = null; // Clear the stream
+        lockScreenAudio.pause();
+        lockScreenAudio.currentTime = 0;
         if (activePlayer) activePlayer.destroy();
         activePlayer = null;
         currentTitle.textContent = 'Not Playing';
@@ -644,6 +657,8 @@ async function playSong(index) {
         activePlayer.pause();
         streamAudio.pause();
         streamAudio.srcObject = null;
+        lockScreenAudio.pause();
+        lockScreenAudio.currentTime = 0;
         activePlayer = null;
     }
 
@@ -685,6 +700,7 @@ async function playSong(index) {
 
         activePlayer.play();
         streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
+        lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
 
         updatePlayPauseUI(true);
         currentTitle.textContent = song.name;
@@ -706,6 +722,7 @@ async function playSong(index) {
                 if (activePlayer && !activePlayer.isPlaying) {
                     activePlayer.play();
                     streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
+                    lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
                     updatePlayPauseUI(true);
                 } else if (!activePlayer && songs.length > 0) {
                     playSong(0);
@@ -715,6 +732,7 @@ async function playSong(index) {
                 if (activePlayer && activePlayer.isPlaying) {
                     activePlayer.pause();
                     streamAudio.pause();
+                    lockScreenAudio.pause();
                     updatePlayPauseUI(false);
                 }
             });
@@ -765,10 +783,12 @@ function togglePlayPause() {
     if (activePlayer.isPlaying) {
         activePlayer.pause();
         streamAudio.pause();
+        lockScreenAudio.pause();
         updatePlayPauseUI(false);
     } else {
         activePlayer.play();
         streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
+        lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
         updatePlayPauseUI(true);
     }
 }
@@ -815,6 +835,7 @@ function handleSongEnd() {
             activePlayer.seek(0);
             activePlayer.play();
             streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
+            lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
         }
     } else if (playbackMode === 'single') {
         // Stop (Single)
