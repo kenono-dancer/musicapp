@@ -54,268 +54,15 @@ let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 // slowing down (rate < 1.0) and dynamically ignores preservesPitch toggles.
 // We bypass the native playback engine and use SoundTouchJS (a Phase Vocoder).
 //
-// ─── Proper iOS Background Routing ──────────────────────────────────────────
-// To keep iOS playing in the background natively, we pipe the AudioWorkletNode
-// into a MediaStreamAudioDestinationNode. This stream is attached to an actual
-// hidden `<audio id="stream-audio">` tag's `srcObject`. This grants proper iOS
-// lock-screen privileges without "hacks" and absolutely zero double-playback.
+// ─── Orthodox Native Audio Playback ──────────────────────────────────────────
+// Reverted to pure HTML5 <audio> for 100% compliant iOS lock screen and 
+// background audio support, discarding SoundTouchJS Worklets.
+const mainAudio = new Audio();
+// We allow iOS to handle background tasks naturally via MediaSession
+mainAudio.setAttribute('playsinline', '');
+document.body.appendChild(mainAudio);
 
-const streamAudio = document.createElement('audio');
-streamAudio.id = 'stream-audio';
-// playsinline ensures no full-screen takeover on iOS
-streamAudio.setAttribute('playsinline', '');
-document.body.appendChild(streamAudio);
 
-// ─── MediaSession Activator (Lock Screen Hook) ──────────────────────────────
-// iOS Safari strictly requires an HTML <audio> tag with a physical `src` file
-// that has a valid duration (>0) to expose MediaSession buttons. If we disconnect
-// the audio graph, iOS kills interactivity.
-// Solution: We play a dynamically generated 1-hour pure silence WAV file. 
-// It remains fully connected but outputs literal silence, allowing MediaSession
-// to hook into the system without duplicating the actual music track.
-function createSilentAudioUrl() {
-    const duration = 3600; // 1 hour
-    const sampleRate = 8000;
-    const numChannels = 1;
-    const bitsPerSample = 8;
-    const blockAlign = numChannels * (bitsPerSample / 8);
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = duration * byteRate;
-    const buffer = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(buffer);
-
-    const writeString = (offset, string) => {
-        for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
-    };
-
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true); // PCM
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bitsPerSample, true);
-    writeString(36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    const uint8Arr = new Uint8Array(buffer);
-    // Fill with silence (128 is center for 8-bit unsigned)
-    uint8Arr.fill(128, 44);
-
-    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
-}
-
-const lockScreenAudio = new Audio();
-// Let it loop silently
-lockScreenAudio.loop = true;
-lockScreenAudio.volume = 1.0;
-lockScreenAudio.src = createSilentAudioUrl(); // Hydrate the silence
-
-let audioCtx = null;
-let activePlayer = null;
-let mediaStreamDestination = null;
-
-class SoundTouchPlayer {
-    constructor(context, audioBuffer, onEnd) {
-        this.ctx = context;
-        this.onEnd = onEnd;
-        this.audioBuffer = audioBuffer;
-        this.duration = audioBuffer.duration;
-
-        this.isPlaying = false;
-        this.timePlayed = 0;
-        this.speed = 1.0;
-        this.preservePitch = true;
-        this.workletNode = null;
-
-        // Ensure worklet is loaded
-        this.initPromise = this._initWorklet();
-    }
-
-    async _initWorklet() {
-        if (!SoundTouchPlayer.workletLoaded) {
-            const res = await fetch('lib/soundtouch.js');
-            const stCode = await res.text();
-
-            const workletCode = `
-                ${stCode}
-                
-                class PhaseVocoderWorklet extends AudioWorkletProcessor {
-                    constructor() {
-                        super();
-                        this.soundTouch = new SoundTouch();
-                        this.soundTouch.pitch = 1.0;
-                        this.soundTouch.tempo = 1.0;
-                        this.soundTouch.rate = 1.0;
-                        
-                        this.leftChannel = new Float32Array(0);
-                        this.rightChannel = new Float32Array(0);
-                        this.sourcePosition = 0;
-                        this.framesSinceLastUpdate = 0;
-                        this.isEnded = false;
-                        
-                        this.filter = new SimpleFilter({
-                            extract: (target, numFrames) => {
-                                const available = Math.max(0, this.leftChannel.length - this.sourcePosition);
-                                const framesToExtract = Math.min(numFrames, available);
-                                for (let i = 0; i < framesToExtract; i++) {
-                                    target[i * 2] = this.leftChannel[this.sourcePosition + i];
-                                    target[i * 2 + 1] = this.rightChannel[this.sourcePosition + i];
-                                }
-                                this.sourcePosition += framesToExtract;
-                                
-                                this.framesSinceLastUpdate += framesToExtract;
-                                if (this.framesSinceLastUpdate >= 4096) {
-                                    this.port.postMessage({ type: 'TIME_UPDATE', position: this.sourcePosition });
-                                    this.framesSinceLastUpdate = 0;
-                                }
-                                
-                                return framesToExtract;
-                            }
-                        }, this.soundTouch);
-                        
-                        this.port.onmessage = (e) => {
-                            const data = e.data;
-                            if (data.type === 'SET_AUDIO') {
-                                this.leftChannel = data.left;
-                                this.rightChannel = data.right || data.left;
-                                this.sourcePosition = 0;
-                                this.filter.sourcePosition = 0;
-                                this.soundTouch.clear();
-                                this.isEnded = false;
-                            } else if (data.type === 'SET_PARAMS') {
-                                this.soundTouch.tempo = data.tempo;
-                                this.soundTouch.rate = data.rate;
-                            } else if (data.type === 'SEEK') {
-                                this.sourcePosition = data.position;
-                                this.filter.sourcePosition = data.position;
-                                this.soundTouch.clear();
-                                this.isEnded = false;
-                            }
-                        };
-                    }
-                    
-                    process(inputs, outputs, parameters) {
-                        if (!this.leftChannel || this.leftChannel.length === 0) return true;
-                        
-                        const leftOutput = outputs[0][0];
-                        const rightOutput = outputs[0][1];
-                        
-                        if (!leftOutput || leftOutput.length === 0) return true;
-                        
-                        const bufferSize = leftOutput.length;
-                        const samples = new Float32Array(bufferSize * 2);
-                        const framesExtracted = this.filter.extract(samples, bufferSize);
-                        
-                        for (let i = 0; i < framesExtracted; i++) {
-                            leftOutput[i] = samples[i * 2];
-                            if (rightOutput) rightOutput[i] = samples[i * 2 + 1];
-                        }
-                        
-                        if (framesExtracted === 0 && this.sourcePosition >= this.leftChannel.length && !this.isEnded) {
-                            this.isEnded = true;
-                            this.port.postMessage({ type: 'END' });
-                        }
-                        
-                        return true;
-                    }
-                }
-                
-                registerProcessor('phase-vocoder-worklet', PhaseVocoderWorklet);
-            `;
-
-            const blob = new Blob([workletCode], { type: 'application/javascript' });
-            const url = URL.createObjectURL(blob);
-            await this.ctx.audioWorklet.addModule(url);
-            SoundTouchPlayer.workletLoaded = true;
-        }
-
-        this.workletNode = new AudioWorkletNode(this.ctx, 'phase-vocoder-worklet', {
-            outputChannelCount: [2]
-        });
-
-        this.workletNode.port.onmessage = (e) => {
-            if (e.data.type === 'TIME_UPDATE') {
-                this.timePlayed = e.data.position / this.ctx.sampleRate;
-            } else if (e.data.type === 'END') {
-                // Ensure UI catches the end just as PitchShifter did
-                this.pause();
-                if (this.onEnd) this.onEnd();
-            }
-        };
-
-        // Send AudioBuffer to worklet
-        this.workletNode.port.postMessage({
-            type: 'SET_AUDIO',
-            left: this.audioBuffer.getChannelData(0),
-            right: this.audioBuffer.numberOfChannels > 1 ? this.audioBuffer.getChannelData(1) : this.audioBuffer.getChannelData(0)
-        });
-
-        // Initial setup
-        this.setSpeedAndPitch(this.speed, this.preservePitch);
-    }
-
-    async play() {
-        this._playRequested = true;
-        await this.initPromise;
-        if (!this.isPlaying && this._playRequested) {
-            this.workletNode.disconnect(); // Clean old connections just in case
-            this.workletNode.connect(mediaStreamDestination);
-            if (this.ctx.state === 'suspended') this.ctx.resume();
-            this.isPlaying = true;
-        }
-    }
-
-    pause() {
-        this._playRequested = false;
-        if (this.isPlaying && this.workletNode) {
-            this.workletNode.disconnect();
-            this.isPlaying = false;
-        }
-    }
-
-    async seek(percentage) {
-        await this.initPromise;
-        const targetTime = (Math.max(0, Math.min(percentage, 100)) / 100) * this.duration;
-        this.timePlayed = targetTime;
-        const position = Math.floor(targetTime * this.ctx.sampleRate);
-        this.workletNode.port.postMessage({ type: 'SEEK', position });
-    }
-
-    get currentTime() {
-        return this.timePlayed;
-    }
-
-    async setSpeedAndPitch(speed, preservePitch) {
-        this.speed = Math.max(0.25, Math.min(speed, 4.0));
-        this.preservePitch = preservePitch;
-
-        await this.initPromise;
-
-        let tempo = 1.0;
-        let rate = 1.0;
-
-        if (preservePitch) {
-            tempo = this.speed;
-        } else {
-            rate = this.speed;
-        }
-
-        this.workletNode.port.postMessage({ type: 'SET_PARAMS', tempo, rate });
-    }
-
-    destroy() {
-        this.pause();
-        if (this.workletNode) {
-            this.workletNode.port.onmessage = null;
-        }
-    }
-}
-SoundTouchPlayer.workletLoaded = false;
 
 /**
  * Safely update one or more fields on a song record in IndexedDB.
@@ -467,12 +214,8 @@ function deleteSong(id, event) {
     // Check if deleting currently playing song
     const idx = songs.findIndex(s => s.id === id);
     if (idx === currentSongIndex) {
-        streamAudio.pause();
-        streamAudio.srcObject = null; // Clear the stream
-        lockScreenAudio.pause();
-        lockScreenAudio.currentTime = 0;
-        if (activePlayer) activePlayer.destroy();
-        activePlayer = null;
+        mainAudio.pause();
+        mainAudio.src = '';
         currentTitle.textContent = 'Not Playing';
         currentSongIndex = -1;
         updatePlayPauseUI(false);
@@ -515,8 +258,11 @@ function moveSong(index, direction, event) {
     songs[newIndex] = temp;
 
     // Update currentSongIndex tracking
-    if (currentSongIndex === index) currentSongIndex = newIndex;
-    else if (currentSongIndex === newIndex) currentSongIndex = index;
+    if (currentSongIndex === index) {
+        currentSongIndex = newIndex;
+    } else if (currentSongIndex === newIndex) {
+        currentSongIndex = index;
+    }
 
     // Update order values
     songs[index].order = index;
@@ -684,78 +430,46 @@ function unlockAudioContext(forceUnlock = false) {
 async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
 
-    // Synchronous unlock before await
-    unlockAudioContext();
-
-    currentSongIndex = index;
     const song = songs[index];
+    currentSongIndex = index;
 
-    // Revoke previous object URL to prevent memory leaks
-    if (currentObjectURL) {
+    if (currentObjectURL && !currentObjectURL.startsWith('audio/')) {
         URL.revokeObjectURL(currentObjectURL);
-        currentObjectURL = null;
     }
 
-    if (activePlayer) {
-        activePlayer.pause();
-        streamAudio.pause();
-        streamAudio.srcObject = null;
-        lockScreenAudio.pause();
-        // lockScreenAudio.src = ''; // No longer clear src, it's always silent audio
-        activePlayer = null;
-    }
-
-    // We route AudioWorklet -> MediaStreamDestination -> streamAudio
-    // This provides official iOS lock-screen context without hacks.
-    if (mediaStreamDestination) {
-        streamAudio.srcObject = mediaStreamDestination.stream;
-    }
+    mainAudio.pause();
 
     let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
         ? `audio/${song.id}`
         : URL.createObjectURL(song.blob);
+
     if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
         currentObjectURL = audioUrl;
     }
 
-    // Give lockScreenAudio the real URL so iOS recognizes its duration,
-    // but the AudioContext has swallowed its output node so it remains silent.
-    // lockScreenAudio.src = audioUrl; // Removed: lockScreenAudio always plays silent audio
-    // lockScreenAudio.load(); // Removed: lockScreenAudio always plays silent audio
+    // Set the native source
+    mainAudio.src = audioUrl;
+
+    // Apply speed and pitch settings
+    const savedSpeed = song.speed !== undefined ? song.speed : parseFloat(speedSlider.value);
+    const savedPitch = song.preservePitch !== undefined ? song.preservePitch : pitchToggle.checked;
+
+    mainAudio.playbackRate = savedSpeed;
+    mainAudio.preservesPitch = savedPitch;
+
+    speedSlider.value = savedSpeed;
+    speedValue.textContent = savedSpeed.toFixed(2);
+    pitchToggle.checked = savedPitch;
 
     loadingOverlay.classList.remove('hidden');
 
     try {
-        let arrayBuffer;
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-            const res = await fetch(`audio/${song.id}`);
-            arrayBuffer = await res.arrayBuffer();
-        } else {
-            arrayBuffer = await song.blob.arrayBuffer();
-        }
-
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-        activePlayer = new SoundTouchPlayer(audioCtx, audioBuffer, () => handleSongEnd());
-
-        // Wait for worklet to initialize before starting the native stream tag
-        await activePlayer.initPromise;
-
-        // Important: Restore speed before playing
-        const savedSpeed = song.speed !== undefined ? song.speed : parseFloat(speedSlider.value);
-        const shouldPreserve = song.preservePitch !== undefined ? song.preservePitch : pitchToggle.checked;
-        activePlayer.setSpeedAndPitch(savedSpeed, shouldPreserve);
-
-        activePlayer.play();
-        streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
-        lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
+        await mainAudio.play();
+        loadingOverlay.classList.add('hidden');
 
         updatePlayPauseUI(true);
         currentTitle.textContent = song.name;
         modalSongTitle.textContent = song.name;
-        speedSlider.value = savedSpeed;
-        speedValue.textContent = savedSpeed.toFixed(2);
-        pitchToggle.checked = savedPitch;
 
         renderSongList();
         generateSeekMarkers();
@@ -767,132 +481,26 @@ async function playSong(index) {
                 album: 'Offline Player'
             });
             navigator.mediaSession.setActionHandler('play', () => {
-                if (activePlayer && !activePlayer.isPlaying) {
-                    activePlayer.play();
-                    streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
-                    lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
-                    updatePlayPauseUI(true);
-                } else if (!activePlayer && songs.length > 0) {
-                    playSong(0);
-                }
+                mainAudio.play();
+                updatePlayPauseUI(true);
             });
             navigator.mediaSession.setActionHandler('pause', () => {
-                if (activePlayer && activePlayer.isPlaying) {
-                    activePlayer.pause();
-                    streamAudio.pause();
-                    lockScreenAudio.pause();
-                    updatePlayPauseUI(false);
-                }
+                mainAudio.pause();
+                updatePlayPauseUI(false);
             });
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
             navigator.mediaSession.setActionHandler('seekto', (details) => {
-                if (details.seekTime !== undefined && activePlayer) {
-                    const percentage = (details.seekTime / activePlayer.duration) * 100;
-                    activePlayer.seek(percentage);
-                    updateMediaSessionPosition();
+                if (details.seekTime !== undefined) {
+                    mainAudio.currentTime = details.seekTime;
                 }
             });
         }
-
-    } catch (err) {
-        console.error('[Audio] Decode failed:', err);
-    } finally {
+    } catch (error) {
         loadingOverlay.classList.add('hidden');
-    }
-}
-
-function generateSeekMarkers() {
-    modalSeekMarkers.innerHTML = '';
-    const duration = activePlayer ? activePlayer.duration : 0;
-    if (!duration || !isFinite(duration)) return;
-
-    for (let i = 0; i <= 5; i++) {
-        const percent = i * 20;
-        const time = (percent / 100) * duration;
-
-        const marker = document.createElement('div');
-        marker.className = 'seek-marker';
-        marker.style.left = `${percent}%`;
-        marker.setAttribute('data-time', formatTime(time));
-
-        modalSeekMarkers.appendChild(marker);
-    }
-    modalDuration.textContent = formatTime(duration);
-}
-
-function togglePlayPause() {
-    unlockAudioContext();
-    if (!activePlayer) {
-        if (currentSongIndex === -1 && songs.length > 0) playSong(0);
-        return;
-    }
-
-    if (activePlayer.isPlaying) {
-        activePlayer.pause();
-        streamAudio.pause();
-        lockScreenAudio.pause();
+        console.error("Error playing audio:", error);
+        alert("Failed to play audio. The file might be corrupted or playback blocked.");
         updatePlayPauseUI(false);
-    } else {
-        activePlayer.play();
-        streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
-        lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
-        updatePlayPauseUI(true);
-    }
-}
-
-function updatePlayPauseUI(isPlaying) {
-    if (isPlaying) {
-        playIcon.classList.add('hidden');
-        pauseIcon.classList.remove('hidden');
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-    } else {
-        playIcon.classList.remove('hidden');
-        pauseIcon.classList.add('hidden');
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-    }
-
-    // Sync Modal Buttons
-    if (isPlaying) {
-        modalPlayIcon.classList.add('hidden');
-        modalPauseIcon.classList.remove('hidden');
-    } else {
-        modalPlayIcon.classList.remove('hidden');
-        modalPauseIcon.classList.add('hidden');
-    }
-}
-
-function updateMediaSessionPosition() {
-    if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && activePlayer) {
-        try {
-            navigator.mediaSession.setPositionState({
-                duration: activePlayer.duration,
-                playbackRate: 1.0, // Force 1.0 because activePlayer handles speed internally
-                position: activePlayer.currentTime
-            });
-        } catch (e) {
-            console.warn('setPositionState error:', e);
-        }
-    }
-}
-
-function handleSongEnd() {
-    if (playbackMode === 'one') {
-        // Loop One
-        if (activePlayer) {
-            activePlayer.seek(0);
-            activePlayer.play();
-            streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
-
-            lockScreenAudio.currentTime = 0;
-            lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
-        }
-    } else if (playbackMode === 'single') {
-        // Stop (Single)
-        updatePlayPauseUI(false);
-    } else {
-        // Loop All (default)
-        playNext();
     }
 }
 
@@ -1228,15 +836,17 @@ function loopTimeUpdate() {
 timeUpdateFrame = requestAnimationFrame(loopTimeUpdate);
 
 seekSlider.addEventListener('input', () => {
-    isDraggingSeek = true;
-    const duration = activePlayer ? activePlayer.duration : 0;
+    isSeeking = true;
+    const duration = mainAudio.duration || 0;
     const time = (seekSlider.value / 100) * duration;
     currentTimeEl.textContent = formatTime(time);
-    if (activePlayer) activePlayer.seek(seekSlider.value);
 });
 
 seekSlider.addEventListener('change', () => {
-    isDraggingSeek = false;
+    isSeeking = false;
+    const duration = mainAudio.duration || 0;
+    const time = (seekSlider.value / 100) * duration;
+    if (mainAudio.src) mainAudio.currentTime = time;
 });
 
 // Modal Controls logic
@@ -1245,10 +855,7 @@ const modalSkipFwdBtn = document.getElementById('modal-skip-fwd-btn');
 
 if (modalSkipBackBtn) {
     modalSkipBackBtn.addEventListener('click', () => {
-        if (activePlayer) {
-            activePlayer.seek(0);
-            lockScreenAudio.currentTime = 0;
-        }
+        if (mainAudio.src) mainAudio.currentTime = 0;
     });
 }
 if (modalSkipFwdBtn) {
@@ -1259,16 +866,17 @@ if (modalSkipFwdBtn) {
 
 // First modal seek slider listeners (desktop)
 modalSeekSlider.addEventListener('input', () => {
-    isDraggingSeek = true;
-    const duration = activePlayer ? activePlayer.duration : 0;
+    isSeeking = true;
+    const duration = mainAudio.duration || 0;
     const time = (modalSeekSlider.value / 100) * duration;
     modalCurrentTime.textContent = formatTime(time);
-    if (activePlayer) activePlayer.seek(modalSeekSlider.value);
-
 });
 
 modalSeekSlider.addEventListener('change', () => {
-    isDraggingSeek = false;
+    isSeeking = false;
+    const duration = mainAudio.duration || 0;
+    const time = (modalSeekSlider.value / 100) * duration;
+    if (mainAudio.src) mainAudio.currentTime = time;
 });
 
 // Update Seek Markers (Modal - Update Text)
