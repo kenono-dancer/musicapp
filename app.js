@@ -47,6 +47,7 @@ let playbackMode = 'all'; // 'all' | 'one' | 'single'
 let longPressTimer = null;
 let rewindInterval = null;
 let isLongPressing = false;
+let isSeeking = false; // Missing state for seek slider interaction
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
 // ─── Phase Vocoder Audio Engine (SoundTouchJS) ─────────────────────────────
@@ -839,6 +840,18 @@ function skipSeconds(seconds) {
 
         const percentage = (newTime / duration) * 100;
         mainAudio.currentTime = newTime;
+    }
+}
+
+function handleSongEnd() {
+    if (playbackMode === 'one') {
+        mainAudio.currentTime = 0;
+        mainAudio.play();
+    } else if (playbackMode === 'all') {
+        playNext();
+    } else {
+        // 'single' mode
+        updatePlayPauseUI(false);
     }
 }
 
