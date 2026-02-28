@@ -19,6 +19,7 @@ const playerModal = document.getElementById('player-modal');
 const closeModalBtn = document.getElementById('close-modal-btn');
 const modalSongTitle = document.getElementById('modal-song-title');
 const speedSlider = document.getElementById('speed-slider');
+const barSpeedSlider = document.getElementById('bar-speed-slider');
 const speedValue = document.getElementById('speed-value');
 const resetSpeedBtn = document.getElementById('reset-speed-btn');
 const pitchToggle = document.getElementById('pitch-toggle');
@@ -30,6 +31,7 @@ const modalPlayPauseBtn = document.getElementById('modal-play-pause-btn');
 const modalPlayIcon = document.getElementById('modal-play-icon');
 const modalPauseIcon = document.getElementById('modal-pause-icon');
 const modalSeekSlider = document.getElementById('modal-seek-slider');
+const modalSeekMarkers = document.getElementById('modal-seek-markers');
 const modalCurrentTime = document.getElementById('modal-current-time');
 const modalDuration = document.getElementById('modal-duration');
 
@@ -484,6 +486,7 @@ async function playSong(index) {
     mainAudio.preservesPitch = savedPitch;
 
     speedSlider.value = savedSpeed;
+    if (barSpeedSlider) barSpeedSlider.value = savedSpeed;
     speedValue.textContent = savedSpeed.toFixed(2);
     pitchToggle.checked = savedPitch;
 
@@ -496,7 +499,7 @@ async function playSong(index) {
         currentTitle.textContent = song.name;
         modalSongTitle.textContent = song.name;
         renderSongList();
-        updatePlayPauseUI(true);
+        generateSeekMarkers();
 
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
@@ -586,8 +589,15 @@ function playPrev() {
 
 let speedUpdateFrame = null;
 
-function updateSpeed(saveToDB = true) {
-    const speed = parseFloat(speedSlider.value);
+function updateSpeed(saveToDB = true, source = 'modal') {
+    const speed = parseFloat(source === 'bar' ? barSpeedSlider.value : speedSlider.value);
+
+    // Sync sliders
+    if (source === 'bar') {
+        speedSlider.value = speed;
+    } else if (barSpeedSlider) {
+        barSpeedSlider.value = speed;
+    }
 
     // UI updates instantly for responsive feel
     speedValue.textContent = speed.toFixed(2);
@@ -995,14 +1005,39 @@ modalSeekSlider.addEventListener('change', () => {
 });
 
 // Generate Seek Markers (Modal - Initial Layout)
-function updateModalDuration() {
+function generateSeekMarkers() {
+    modalSeekMarkers.innerHTML = '';
     const duration = mainAudio.duration || 0;
     if (!duration || !isFinite(duration)) return;
+
+    for (let i = 0; i <= 5; i++) {
+        const percent = i * 20;
+        const time = (percent / 100) * duration;
+
+        const marker = document.createElement('div');
+        marker.className = 'seek-marker';
+        marker.style.left = `${percent}%`;
+        marker.setAttribute('data-time', formatTime(time));
+
+        modalSeekMarkers.appendChild(marker);
+    }
     modalDuration.textContent = formatTime(duration);
 }
 
 // Update Seek Markers (Modal - Update Text)
-// Removed updateSeekMarkers as markers are no longer used.
+function updateSeekMarkers() {
+    const duration = mainAudio.duration || 0;
+    if (isNaN(duration) || duration === 0) return;
+
+    const m25 = document.getElementById('marker-25');
+    const m50 = document.getElementById('marker-50');
+    const m75 = document.getElementById('marker-75');
+
+    // Only update if elements exist (in player bar)
+    if (m25) m25.textContent = formatTime(duration * 0.25);
+    if (m50) m50.textContent = formatTime(duration * 0.50);
+    if (m75) m75.textContent = formatTime(duration * 0.75);
+}
 
 
 // Delegate Data Skip Buttons (Global)
@@ -1021,8 +1056,13 @@ document.addEventListener('click', (e) => {
 // Modal & Settings
 expandControlsBtn.addEventListener('click', () => {
     playerModal.classList.remove('hidden');
-    updateModalDuration();
+    generateSeekMarkers(); // Ensure markers are tailored to modal if we dynamic gen them
 });
+
+// Re-generate markers for modal to ensure new layout logic?
+// Actually generateSeekMarkers in current code targets `modalSeekMarkers` div.
+// We updated HTML to have id="modal-seek-markers" inside .seek-container.
+// We should check generateSeekMarkers implementation.
 
 closeModalBtn.addEventListener('click', () => {
     playerModal.classList.add('hidden');
@@ -1043,8 +1083,35 @@ speedSlider.addEventListener('input', () => updateSpeed(false)); // UI only duri
 speedSlider.addEventListener('change', () => updateSpeedAndRender()); // Save + re-render on drag end
 resetSpeedBtn.addEventListener('click', () => {
     speedSlider.value = 1.0;
+    if (barSpeedSlider) barSpeedSlider.value = 1.0;
     updateSpeed();
 });
+
+if (barSpeedSlider) {
+    barSpeedSlider.addEventListener('input', () => updateSpeed(false, 'bar'));
+    barSpeedSlider.addEventListener('change', () => updateSpeedAndRender());
+
+    // Explicit touch handlers for mobile responsiveness
+    const handleSpeedTouch = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = barSpeedSlider.getBoundingClientRect();
+        const touch = e.touches[0];
+        let x = touch.clientX - rect.left;
+        if (x < 0) x = 0;
+        if (x > rect.width) x = rect.width;
+        const percent = (x / rect.width);
+        const min = parseFloat(barSpeedSlider.min);
+        const max = parseFloat(barSpeedSlider.max);
+        const val = min + percent * (max - min);
+        barSpeedSlider.value = val;
+        updateSpeed(false, 'bar');
+    };
+
+    barSpeedSlider.addEventListener('touchstart', handleSpeedTouch, { passive: false });
+    barSpeedSlider.addEventListener('touchmove', handleSpeedTouch, { passive: false });
+    barSpeedSlider.addEventListener('touchend', () => updateSpeedAndRender(), { passive: false });
+}
 
 pitchToggle.addEventListener('click', () => updatePitchPreservation(true));
 pitchToggle.addEventListener('change', () => updatePitchPreservation(true));

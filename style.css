@@ -278,6 +278,34 @@ button svg {
     /* Center thumb on 4px track */
 }
 
+#bar-speed-slider {
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    height: 30px;
+    background: transparent;
+    outline: none;
+    margin: -10px 0 0 0;
+}
+
+#bar-speed-slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(187, 134, 252, 0.1);
+    border-radius: 2px;
+}
+
+#bar-speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(187, 134, 252, 0.3);
+    margin-top: -4px;
+}
+
 .seek-markers {
     position: relative;
     width: 100%;
