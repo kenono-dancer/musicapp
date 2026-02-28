@@ -1092,10 +1092,25 @@ resetSpeedBtn.addEventListener('click', () => {
 });
 
 if (barResetSpeedBtn) {
-    barResetSpeedBtn.addEventListener('click', () => {
+    barResetSpeedBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Bar Reset Clicked');
         speedSlider.value = 1.0;
         if (barSpeedSlider) barSpeedSlider.value = 1.0;
-        updateSpeed();
+        updateSpeed(true, 'bar');
+    });
+}
+
+if (barSpeedValue) {
+    barSpeedValue.style.pointerEvents = 'auto'; // Ensure it can be clicked
+    barSpeedValue.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Bar % Clicked -> Reset');
+        speedSlider.value = 1.0;
+        if (barSpeedSlider) barSpeedSlider.value = 1.0;
+        updateSpeed(true, 'bar');
     });
 }
 
