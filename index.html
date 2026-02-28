@@ -83,7 +83,13 @@
                 <span id="marker-75" class="seek-marker"></span>
             </div>
 
-            <input type="range" id="bar-speed-slider" min="0.5" max="1.5" step="0.01" value="1.0">
+            <div class="bar-speed-controls" style="display: flex; align-items: center; gap: 10px; margin-top: -10px;">
+                <input type="range" id="bar-speed-slider" min="0.5" max="1.5" step="0.01" value="1.0" style="flex: 1;">
+                <span id="bar-speed-value"
+                    style="font-size: 0.8rem; color: var(--primary-color); min-width: 45px; text-align: right; font-variant-numeric: tabular-nums;">100%</span>
+                <button id="bar-reset-speed-btn" class="text-btn"
+                    style="font-size: 0.75rem; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);">Reset</button>
+            </div>
 
             <div class="controls-main">
                 <!-- Track Prev -->

@@ -20,8 +20,10 @@ const closeModalBtn = document.getElementById('close-modal-btn');
 const modalSongTitle = document.getElementById('modal-song-title');
 const speedSlider = document.getElementById('speed-slider');
 const barSpeedSlider = document.getElementById('bar-speed-slider');
+const barSpeedValue = document.getElementById('bar-speed-value');
 const speedValue = document.getElementById('speed-value');
 const resetSpeedBtn = document.getElementById('reset-speed-btn');
+const barResetSpeedBtn = document.getElementById('bar-reset-speed-btn');
 const pitchToggle = document.getElementById('pitch-toggle');
 const loadingOverlay = document.getElementById('loading-overlay');
 const playbackModeBtn = document.getElementById('playback-mode-toggle');
@@ -488,6 +490,7 @@ async function playSong(index) {
     speedSlider.value = savedSpeed;
     if (barSpeedSlider) barSpeedSlider.value = savedSpeed;
     speedValue.textContent = savedSpeed.toFixed(2);
+    if (barSpeedValue) barSpeedValue.textContent = Math.round(savedSpeed * 100) + '%';
     pitchToggle.checked = savedPitch;
 
     loadingOverlay.classList.remove('hidden');
@@ -601,6 +604,7 @@ function updateSpeed(saveToDB = true, source = 'modal') {
 
     // UI updates instantly for responsive feel
     speedValue.textContent = speed.toFixed(2);
+    if (barSpeedValue) barSpeedValue.textContent = Math.round(speed * 100) + '%';
 
     if (saveToDB && currentSongIndex !== -1) {
         songs[currentSongIndex].speed = speed;
@@ -1086,6 +1090,14 @@ resetSpeedBtn.addEventListener('click', () => {
     if (barSpeedSlider) barSpeedSlider.value = 1.0;
     updateSpeed();
 });
+
+if (barResetSpeedBtn) {
+    barResetSpeedBtn.addEventListener('click', () => {
+        speedSlider.value = 1.0;
+        if (barSpeedSlider) barSpeedSlider.value = 1.0;
+        updateSpeed();
+    });
+}
 
 if (barSpeedSlider) {
     barSpeedSlider.addEventListener('input', () => updateSpeed(false, 'bar'));

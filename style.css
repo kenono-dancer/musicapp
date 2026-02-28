@@ -278,14 +278,17 @@ button svg {
     /* Center thumb on 4px track */
 }
 
-#bar-speed-slider {
+.bar-speed-controls {
     width: 100%;
+    margin-bottom: 4px;
+}
+
+#bar-speed-slider {
     appearance: none;
     -webkit-appearance: none;
     height: 30px;
     background: transparent;
     outline: none;
-    margin: -10px 0 0 0;
 }
 
 #bar-speed-slider::-webkit-slider-runnable-track {
