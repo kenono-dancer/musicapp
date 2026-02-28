@@ -15,9 +15,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <script>
         // Single source of truth for the app version
-        const APP_VERSION = '2.110.0';
+        const APP_VERSION = '2.120.0';
     </script>
-    <link rel="stylesheet" href="style.css?v=2.110.0">
+    <link rel="stylesheet" href="style.css?v=2.120.0">
     <script>
         // Global Error Monitor to catch initialization crashes
         window.onerror = function (msg, url, lineNo, columnNo, error) {
@@ -77,11 +77,7 @@
             </div>
 
             <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.1">
-            <div class="seek-markers">
-                <span id="marker-25" class="seek-marker"></span>
-                <span id="marker-50" class="seek-marker"></span>
-                <span id="marker-75" class="seek-marker"></span>
-            </div>
+            <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.1">
 
             <div class="controls-main">
                 <!-- Track Prev -->
@@ -133,9 +129,7 @@
 
         <div id="global-app-footer" class="version-info-footer">
             <span class="app-version-display" data-prefix="App Version: " onclick="openSettings()">App Version:
-                2.80</span>
-            <span class="footer-separator">•</span>
-            <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
+                2.120.0</span>
         </div>
 
         <!-- Loading Overlay -->
@@ -167,7 +161,6 @@
                     <div class="seek-container" style="position: relative; margin-top: 10px; margin-bottom: 20px;">
                         <input type="range" id="modal-seek-slider" min="0" max="100" value="0" step="0.1"
                             style="width: 100%;">
-                        <div id="modal-seek-markers" class="seek-markers"></div>
                     </div>
 
                     <div class="controls-main">
@@ -249,9 +242,7 @@
 
                 <div class="version-info-footer">
                     <span class="app-version-display" data-prefix="App Version: " onclick="openSettings()">App Version:
-                        2.80</span>
-                    <span class="footer-separator">•</span>
-                    <a href="https://itxdancer.com" target="_blank" class="footer-link">ITxDancer.com</a>
+                        2.120.0</span>
                 </div>
             </div>
         </div>
@@ -424,7 +415,7 @@
                 </div>
             </div>
         </div>
-        <script src="app.js?v=2.110.0"></script>
+        <script src="app.js?v=2.120.0"></script>
         <script>
             // Emergency Fallback for Settings
             window.openSettings = function () {

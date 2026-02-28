@@ -30,7 +30,6 @@ const modalPlayPauseBtn = document.getElementById('modal-play-pause-btn');
 const modalPlayIcon = document.getElementById('modal-play-icon');
 const modalPauseIcon = document.getElementById('modal-pause-icon');
 const modalSeekSlider = document.getElementById('modal-seek-slider');
-const modalSeekMarkers = document.getElementById('modal-seek-markers');
 const modalCurrentTime = document.getElementById('modal-current-time');
 const modalDuration = document.getElementById('modal-duration');
 
@@ -497,7 +496,7 @@ async function playSong(index) {
         currentTitle.textContent = song.name;
         modalSongTitle.textContent = song.name;
         renderSongList();
-        generateSeekMarkers();
+        updatePlayPauseUI(true);
 
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
@@ -996,39 +995,14 @@ modalSeekSlider.addEventListener('change', () => {
 });
 
 // Generate Seek Markers (Modal - Initial Layout)
-function generateSeekMarkers() {
-    modalSeekMarkers.innerHTML = '';
+function updateModalDuration() {
     const duration = mainAudio.duration || 0;
     if (!duration || !isFinite(duration)) return;
-
-    for (let i = 0; i <= 5; i++) {
-        const percent = i * 20;
-        const time = (percent / 100) * duration;
-
-        const marker = document.createElement('div');
-        marker.className = 'seek-marker';
-        marker.style.left = `${percent}%`;
-        marker.setAttribute('data-time', formatTime(time));
-
-        modalSeekMarkers.appendChild(marker);
-    }
     modalDuration.textContent = formatTime(duration);
 }
 
 // Update Seek Markers (Modal - Update Text)
-function updateSeekMarkers() {
-    const duration = mainAudio.duration || 0;
-    if (isNaN(duration) || duration === 0) return;
-
-    const m25 = document.getElementById('marker-25');
-    const m50 = document.getElementById('marker-50');
-    const m75 = document.getElementById('marker-75');
-
-    // Only update if elements exist (in player bar)
-    if (m25) m25.textContent = formatTime(duration * 0.25);
-    if (m50) m50.textContent = formatTime(duration * 0.50);
-    if (m75) m75.textContent = formatTime(duration * 0.75);
-}
+// Removed updateSeekMarkers as markers are no longer used.
 
 
 // Delegate Data Skip Buttons (Global)
@@ -1047,13 +1021,8 @@ document.addEventListener('click', (e) => {
 // Modal & Settings
 expandControlsBtn.addEventListener('click', () => {
     playerModal.classList.remove('hidden');
-    generateSeekMarkers(); // Ensure markers are tailored to modal if we dynamic gen them
+    updateModalDuration();
 });
-
-// Re-generate markers for modal to ensure new layout logic?
-// Actually generateSeekMarkers in current code targets `modalSeekMarkers` div.
-// We updated HTML to have id="modal-seek-markers" inside .seek-container.
-// We should check generateSeekMarkers implementation.
 
 closeModalBtn.addEventListener('click', () => {
     playerModal.classList.add('hidden');
