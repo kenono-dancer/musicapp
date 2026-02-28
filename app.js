@@ -39,7 +39,6 @@ const modalDuration = document.getElementById('modal-duration');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let db;
-let audio = new Audio();
 let songs = [];
 let currentSongIndex = -1;
 let currentObjectURL = null;
@@ -627,13 +626,9 @@ async function playSong(index) {
     }
 
     if (activePlayer) {
-        activePlayer.destroy();
+        activePlayer.pause();
         activePlayer = null;
     }
-
-    // Keep native audio muted — it exists solely to hold the iOS MediaSession open.
-    // Using volume 0.001 caused audible doubling with the AudioWorklet output.
-    audio.muted = true;
 
     let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
         ? `audio/${song.id}`
@@ -641,8 +636,6 @@ async function playSong(index) {
     if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
         currentObjectURL = audioUrl;
     }
-    audio.src = audioUrl;
-    audio.play().catch(e => console.warn('Native fallback play failed:', e));
 
     loadingOverlay.classList.remove('hidden');
 
@@ -681,8 +674,20 @@ async function playSong(index) {
                 artist: 'My Music',
                 album: 'Offline Player'
             });
-            navigator.mediaSession.setActionHandler('play', () => togglePlayPause());
-            navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
+            navigator.mediaSession.setActionHandler('play', () => {
+                if (activePlayer && !activePlayer.isPlaying) {
+                    activePlayer.play();
+                    updatePlayPauseUI(true);
+                } else if (!activePlayer && songs.length > 0) {
+                    playSong(0);
+                }
+            });
+            navigator.mediaSession.setActionHandler('pause', () => {
+                if (activePlayer && activePlayer.isPlaying) {
+                    activePlayer.pause();
+                    updatePlayPauseUI(false);
+                }
+            });
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
             navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -729,11 +734,9 @@ function togglePlayPause() {
 
     if (activePlayer.isPlaying) {
         activePlayer.pause();
-        audio.pause();
         updatePlayPauseUI(false);
     } else {
         activePlayer.play();
-        audio.play().catch(e => console.warn('Native fallback play failed:', e));
         updatePlayPauseUI(true);
     }
 }
@@ -780,8 +783,6 @@ function handleSongEnd() {
             activePlayer.seek(0);
             activePlayer.play();
         }
-        audio.currentTime = 0;
-        audio.play().catch(e => console.warn('Native fallback play failed:', e));
     } else if (playbackMode === 'single') {
         // Stop (Single)
         updatePlayPauseUI(false);
@@ -823,7 +824,6 @@ function updateSpeed(saveToDB = true) {
         if (activePlayer) {
             activePlayer.setSpeedAndPitch(speed, shouldPreserve);
         }
-        audio.playbackRate = speed; // Keep native audio slightly in sync
     });
 }
 
@@ -978,7 +978,7 @@ skipBackBtn.addEventListener('click', (e) => {
     }
 
     // Always restart current song
-    audio.currentTime = 0;
+    if (activePlayer) activePlayer.seek(0);
 });
 
 // Skip Forward Button (Standard Click)
@@ -995,17 +995,15 @@ function startFastForward() {
     isLongPressing = true;
     longPressTimer = setTimeout(() => {
         if (activePlayer) activePlayer.setSpeedAndPitch(2.0, false);
-        audio.playbackRate = 2.0;
     }, 500); // Wait 500ms to consider it a hold
 }
 
 function stopFastForward() {
     clearTimeout(longPressTimer);
-    if (audio.playbackRate === 2.0) {
-        // Restore speed
+    if (activePlayer && activePlayer.speed === 2.0 && !pitchToggle.checked) {
+        // We only explicitly check for the FWD state here to restore
         const speed = parseFloat(speedSlider.value);
-        if (activePlayer) activePlayer.setSpeedAndPitch(speed, pitchToggle.checked);
-        audio.playbackRate = speed;
+        activePlayer.setSpeedAndPitch(speed, pitchToggle.checked);
         // Prevent next 'click' from firing seek (if any)
         setTimeout(() => { isLongPressing = false; }, 50);
         return true; // Was long press
@@ -1031,7 +1029,6 @@ function startRewind() {
                 const newTime = Math.max(0, activePlayer.currentTime - 0.2);
                 activePlayer.seek((newTime / activePlayer.duration) * 100);
             }
-            audio.currentTime = Math.max(0, audio.currentTime - 0.2); // 0.2s back every 50ms = 4x speed approx
         }, 50);
     }, 500);
 }
@@ -1056,7 +1053,6 @@ function handleBackTouchEnd(e) {
     if (!wasLongPress) {
         // Always restart
         if (activePlayer) activePlayer.seek(0);
-        audio.currentTime = 0;
     }
 }
 
@@ -1078,6 +1074,23 @@ skipBackBtn.addEventListener('touchend', handleBackTouchEnd); // Specific handle
 skipBackBtn.addEventListener('mouseleave', stopRewind);
 
 let timeUpdateFrame = null;
+
+function skipSeconds(seconds) {
+    if (activePlayer) {
+        const current = activePlayer.currentTime;
+        const duration = activePlayer.duration;
+        let newTime = current + seconds;
+
+        if (newTime < 0) newTime = 0;
+        if (newTime >= duration) {
+            handleSongEnd();
+            return;
+        }
+
+        const percentage = (newTime / duration) * 100;
+        activePlayer.seek(percentage);
+    }
+}
 
 function loopTimeUpdate() {
     if (activePlayer && activePlayer.isPlaying) {
@@ -1113,7 +1126,6 @@ seekSlider.addEventListener('input', () => {
     const time = (seekSlider.value / 100) * duration;
     currentTimeEl.textContent = formatTime(time);
     if (activePlayer) activePlayer.seek(seekSlider.value);
-    audio.currentTime = time; // Keep lockscreen somewhat accurate if possible
 });
 
 seekSlider.addEventListener('change', () => {
@@ -1127,7 +1139,6 @@ const modalSkipFwdBtn = document.getElementById('modal-skip-fwd-btn');
 if (modalSkipBackBtn) {
     modalSkipBackBtn.addEventListener('click', () => {
         if (activePlayer) activePlayer.seek(0);
-        audio.currentTime = 0;
     });
 }
 if (modalSkipFwdBtn) {
@@ -1143,7 +1154,6 @@ modalSeekSlider.addEventListener('input', () => {
     const time = (modalSeekSlider.value / 100) * duration;
     modalCurrentTime.textContent = formatTime(time);
     if (activePlayer) activePlayer.seek(modalSeekSlider.value);
-    audio.currentTime = time;
 
 });
 
@@ -1153,7 +1163,7 @@ modalSeekSlider.addEventListener('change', () => {
 
 // Update Seek Markers (Modal - Update Text)
 function updateSeekMarkers() {
-    const duration = audio.duration;
+    const duration = activePlayer ? activePlayer.duration : 0;
     if (isNaN(duration) || duration === 0) return;
 
     const m25 = document.getElementById('marker-25');
@@ -1173,8 +1183,8 @@ document.addEventListener('click', (e) => {
     if (btn) {
         e.stopPropagation(); // Prevent list click
         const skip = parseFloat(btn.dataset.skip);
-        if (!isNaN(skip) && audio.src) {
-            audio.currentTime += skip;
+        if (!isNaN(skip)) {
+            skipSeconds(skip);
         }
     }
 });
@@ -1256,7 +1266,6 @@ function handleSeekTouch(e) {
 
     const time = (percent / 100) * duration;
     if (activePlayer) activePlayer.seek(percent);
-    audio.currentTime = time;
     currentTimeEl.textContent = formatTime(time);
 }
 
@@ -1296,7 +1305,6 @@ function handleModalSeekTouch(e) {
 
     const time = (percent / 100) * duration;
     if (activePlayer) activePlayer.seek(percent);
-    audio.currentTime = time;
     modalCurrentTime.textContent = formatTime(time);
 }
 
@@ -1313,9 +1321,6 @@ window.skipTime = function (seconds) {
         const newTime = Math.max(0, activePlayer.currentTime + seconds);
         const percent = (newTime / activePlayer.duration) * 100;
         activePlayer.seek(percent);
-    }
-    if (audio.src) {
-        audio.currentTime += seconds;
     }
 };
 
