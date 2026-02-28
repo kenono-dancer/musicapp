@@ -407,6 +407,27 @@ window.addEventListener('orientationchange', () => {
 
 // ─── Playback Functions ──────────────────────────────────────────────────────
 
+function updatePlayPauseUI(isPlaying) {
+    if (isPlaying) {
+        playIcon.classList.add('hidden');
+        pauseIcon.classList.remove('hidden');
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    } else {
+        playIcon.classList.remove('hidden');
+        pauseIcon.classList.add('hidden');
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    }
+
+    // Sync Modal Buttons
+    if (isPlaying) {
+        modalPlayIcon.classList.add('hidden');
+        modalPauseIcon.classList.remove('hidden');
+    } else {
+        modalPlayIcon.classList.remove('hidden');
+        modalPauseIcon.classList.add('hidden');
+    }
+}
+
 async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
 
