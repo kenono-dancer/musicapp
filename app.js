@@ -68,18 +68,20 @@ document.body.appendChild(streamAudio);
 
 // ─── MediaSession Activator (Lock Screen Hook) ──────────────────────────────
 // iOS Safari strictly requires an HTML <audio> tag with a concrete `src` file
-// to expose the system lock screen Media UI and headphone controls. `srcObject`
-// streams do not trigger it alone. Thus, we play a silent Base64 WAV file
-// concurrently to trick iOS into showing the MediaSession interface.
-const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+// (and a valid duration > 0) to expose the system lock screen Media UI.
+// We load the actual song Blob into `lockScreenAudio`, giving it duration.
+// To prevent double playback, we route its output into a MediaElementSourceNode
+// but intentionally *never* connect it to the destination.
 const lockScreenAudio = new Audio();
-lockScreenAudio.src = SILENT_WAV_BASE64;
-lockScreenAudio.loop = true;
+// We won't loop it, because iOS might not like infinite loops for lock screens.
+// We just let it play alongside activePlayer.
 lockScreenAudio.volume = 1.0;
+lockScreenAudio.setAttribute('playsinline', '');
 
 let audioCtx = null;
 let activePlayer = null;
 let mediaStreamDestination = null;
+let lockScreenSourceNode = null;
 
 class SoundTouchPlayer {
     constructor(context, audioBuffer, onEnd) {
@@ -432,7 +434,7 @@ function deleteSong(id, event) {
         streamAudio.pause();
         streamAudio.srcObject = null; // Clear the stream
         lockScreenAudio.pause();
-        lockScreenAudio.currentTime = 0;
+        lockScreenAudio.src = '';
         if (activePlayer) activePlayer.destroy();
         activePlayer = null;
         currentTitle.textContent = 'Not Playing';
@@ -627,6 +629,10 @@ function unlockAudioContext(forceUnlock = false) {
         mediaStreamDestination = audioCtx.createMediaStreamDestination();
         streamAudio.srcObject = mediaStreamDestination.stream;
 
+        // Disconnect lockScreenAudio physically so it's silent but still "active" for iOS
+        lockScreenSourceNode = audioCtx.createMediaElementSource(lockScreenAudio);
+        // We do intentionally NOT connect lockScreenSourceNode to destination.
+
         if (typeof unmuteIOS === 'function') unmuteIOS(audioCtx);
     }
     // Apple requires synchronous resume + dummy oscillator execution within click event
@@ -658,7 +664,7 @@ async function playSong(index) {
         streamAudio.pause();
         streamAudio.srcObject = null;
         lockScreenAudio.pause();
-        lockScreenAudio.currentTime = 0;
+        lockScreenAudio.src = '';
         activePlayer = null;
     }
 
@@ -674,6 +680,11 @@ async function playSong(index) {
     if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
         currentObjectURL = audioUrl;
     }
+
+    // Give lockScreenAudio the real URL so iOS recognizes its duration,
+    // but the AudioContext has swallowed its output node so it remains silent.
+    lockScreenAudio.src = audioUrl;
+    lockScreenAudio.load();
 
     loadingOverlay.classList.remove('hidden');
 
@@ -739,10 +750,14 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
             navigator.mediaSession.setActionHandler('seekto', (details) => {
-                if (details.seekTime !== undefined && activePlayer) {
-                    const percentage = (details.seekTime / activePlayer.duration) * 100;
-                    activePlayer.seek(percentage);
-                    updateMediaSessionPosition();
+                if (activePlayer && details.seekTime !== undefined) {
+                    const duration = activePlayer.duration;
+                    if (duration > 0) {
+                        const newTime = Math.min(Math.max(details.seekTime, 0), duration);
+                        const percent = (newTime / duration) * 100;
+                        activePlayer.seek(percent);
+                        lockScreenAudio.currentTime = newTime; // Keep lock screen time synced
+                    }
                 }
             });
         }
@@ -835,6 +850,8 @@ function handleSongEnd() {
             activePlayer.seek(0);
             activePlayer.play();
             streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
+
+            lockScreenAudio.currentTime = 0;
             lockScreenAudio.play().catch(e => console.warn('Lockscreen hook blocked:', e));
         }
     } else if (playbackMode === 'single') {
@@ -1033,6 +1050,7 @@ skipBackBtn.addEventListener('click', (e) => {
 
     if (activePlayer) {
         activePlayer.seek(0);
+        lockScreenAudio.currentTime = 0;
         updatePlayPauseUI(true);
     } // If repeating one, just seek back
 });
@@ -1181,7 +1199,10 @@ seekSlider.addEventListener('input', () => {
     const duration = activePlayer ? activePlayer.duration : 0;
     const time = (seekSlider.value / 100) * duration;
     currentTimeEl.textContent = formatTime(time);
-    if (activePlayer) activePlayer.seek(seekSlider.value);
+    if (activePlayer) {
+        activePlayer.seek(seekSlider.value);
+        lockScreenAudio.currentTime = time;
+    }
 });
 
 seekSlider.addEventListener('change', () => {
@@ -1194,7 +1215,10 @@ const modalSkipFwdBtn = document.getElementById('modal-skip-fwd-btn');
 
 if (modalSkipBackBtn) {
     modalSkipBackBtn.addEventListener('click', () => {
-        if (activePlayer) activePlayer.seek(0);
+        if (activePlayer) {
+            activePlayer.seek(0);
+            lockScreenAudio.currentTime = 0;
+        }
     });
 }
 if (modalSkipFwdBtn) {
@@ -1209,7 +1233,10 @@ modalSeekSlider.addEventListener('input', () => {
     const duration = activePlayer ? activePlayer.duration : 0;
     const time = (modalSeekSlider.value / 100) * duration;
     modalCurrentTime.textContent = formatTime(time);
-    if (activePlayer) activePlayer.seek(modalSeekSlider.value);
+    if (activePlayer) {
+        activePlayer.seek(modalSeekSlider.value);
+        lockScreenAudio.currentTime = time;
+    }
 
 });
 
@@ -1321,7 +1348,10 @@ function handleSeekTouch(e) {
     seekSlider.value = percent;
 
     const time = (percent / 100) * duration;
-    if (activePlayer) activePlayer.seek(percent);
+    if (activePlayer) {
+        activePlayer.seek(percent);
+        lockScreenAudio.currentTime = time;
+    }
     currentTimeEl.textContent = formatTime(time);
 }
 
@@ -1360,7 +1390,10 @@ function handleModalSeekTouch(e) {
     modalSeekSlider.value = percent;
 
     const time = (percent / 100) * duration;
-    if (activePlayer) activePlayer.seek(percent);
+    if (activePlayer) {
+        activePlayer.seek(percent);
+        lockScreenAudio.currentTime = time;
+    }
     modalCurrentTime.textContent = formatTime(time);
 }
 
@@ -1377,6 +1410,7 @@ window.skipTime = function (seconds) {
         const newTime = Math.max(0, activePlayer.currentTime + seconds);
         const percent = (newTime / activePlayer.duration) * 100;
         activePlayer.seek(percent);
+        lockScreenAudio.currentTime = newTime;
     }
 };
 
