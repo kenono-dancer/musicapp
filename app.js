@@ -49,27 +49,26 @@ let rewindInterval = null;
 let isLongPressing = false;
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
-// ─── Background Keep-Alive ──────────────────────────────────────────────────
-// A tiny, silent base64 WAV file used purely to trick iOS into keeping the tab 
-// alive in the background. It is played/paused in sync with the AudioWorklet.
-const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-let backgroundAudio = new Audio();
-backgroundAudio.src = SILENT_WAV_BASE64;
-backgroundAudio.loop = true;
-// Volume doesn't matter since it's silent, but keeping it unmuted helps iOS 
-// prioritize the process for background retention.
-backgroundAudio.volume = 1.0;
-
 // ─── Phase Vocoder Audio Engine (SoundTouchJS) ─────────────────────────────
 // iOS Safari's native <audio> time-stretching produces metallic noise when
 // slowing down (rate < 1.0) and dynamically ignores preservesPitch toggles.
-// We bypass the native playback engine and use SoundTouchJS (a Phase Vocoder)
-// via a ScriptProcessorNode to ensure perfect pitch and zero-noise speed changes.
-// To keep iOS playing in the background, a muted native <audio> element is 
-// played concurrently to maintain MediaSession locks.
+// We bypass the native playback engine and use SoundTouchJS (a Phase Vocoder).
+//
+// ─── Proper iOS Background Routing ──────────────────────────────────────────
+// To keep iOS playing in the background natively, we pipe the AudioWorkletNode
+// into a MediaStreamAudioDestinationNode. This stream is attached to an actual
+// hidden `<audio id="stream-audio">` tag's `srcObject`. This grants proper iOS
+// lock-screen privileges without "hacks" and absolutely zero double-playback.
+
+const streamAudio = document.createElement('audio');
+streamAudio.id = 'stream-audio';
+// playsinline ensures no full-screen takeover on iOS
+streamAudio.setAttribute('playsinline', '');
+document.body.appendChild(streamAudio);
 
 let audioCtx = null;
 let activePlayer = null;
+let mediaStreamDestination = null;
 
 class SoundTouchPlayer {
     constructor(context, audioBuffer, onEnd) {
@@ -216,7 +215,7 @@ class SoundTouchPlayer {
         await this.initPromise;
         if (!this.isPlaying && this._playRequested) {
             this.workletNode.disconnect(); // Clean old connections just in case
-            this.workletNode.connect(this.ctx.destination);
+            this.workletNode.connect(mediaStreamDestination);
             if (this.ctx.state === 'suspended') this.ctx.resume();
             this.isPlaying = true;
         }
@@ -419,8 +418,10 @@ function deleteSong(id, event) {
     // Check if deleting currently playing song
     const idx = songs.findIndex(s => s.id === id);
     if (idx === currentSongIndex) {
-        audio.pause();
-        audio.src = '';
+        streamAudio.pause();
+        streamAudio.srcObject = null; // Clear the stream
+        if (activePlayer) activePlayer.destroy();
+        activePlayer = null;
         currentTitle.textContent = 'Not Playing';
         currentSongIndex = -1;
         updatePlayPauseUI(false);
@@ -609,7 +610,10 @@ window.addEventListener('orientationchange', () => {
 function unlockAudioContext(forceUnlock = false) {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-        // Start the strict iOS WebAudio unmuter (bypasses Manner Mode)
+        // Create the global media destination if it doesn't exist
+        mediaStreamDestination = audioCtx.createMediaStreamDestination();
+        streamAudio.srcObject = mediaStreamDestination.stream;
+
         if (typeof unmuteIOS === 'function') unmuteIOS(audioCtx);
     }
     // Apple requires synchronous resume + dummy oscillator execution within click event
@@ -638,9 +642,15 @@ async function playSong(index) {
 
     if (activePlayer) {
         activePlayer.pause();
-        backgroundAudio.pause();
-        backgroundAudio.currentTime = 0;
+        streamAudio.pause();
+        streamAudio.srcObject = null;
         activePlayer = null;
+    }
+
+    // We route AudioWorklet -> MediaStreamDestination -> streamAudio
+    // This provides official iOS lock-screen context without hacks.
+    if (mediaStreamDestination) {
+        streamAudio.srcObject = mediaStreamDestination.stream;
     }
 
     let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
@@ -665,11 +675,16 @@ async function playSong(index) {
 
         activePlayer = new SoundTouchPlayer(audioCtx, audioBuffer, () => handleSongEnd());
 
-        const savedSpeed = song.speed !== undefined ? song.speed : 1.0;
-        const savedPitch = song.preservePitch !== undefined ? song.preservePitch : true;
+        // Wait for worklet to initialize before starting the native stream tag
+        await activePlayer.initPromise;
 
-        activePlayer.setSpeedAndPitch(savedSpeed, savedPitch);
+        // Important: Restore speed before playing
+        const savedSpeed = song.speed !== undefined ? song.speed : parseFloat(speedSlider.value);
+        const shouldPreserve = song.preservePitch !== undefined ? song.preservePitch : pitchToggle.checked;
+        activePlayer.setSpeedAndPitch(savedSpeed, shouldPreserve);
+
         activePlayer.play();
+        streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
 
         updatePlayPauseUI(true);
         currentTitle.textContent = song.name;
@@ -690,7 +705,7 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('play', () => {
                 if (activePlayer && !activePlayer.isPlaying) {
                     activePlayer.play();
-                    backgroundAudio.play().catch(e => console.warn('Background Keep-Alive blocked:', e));
+                    streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
                     updatePlayPauseUI(true);
                 } else if (!activePlayer && songs.length > 0) {
                     playSong(0);
@@ -699,7 +714,7 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('pause', () => {
                 if (activePlayer && activePlayer.isPlaying) {
                     activePlayer.pause();
-                    backgroundAudio.pause();
+                    streamAudio.pause();
                     updatePlayPauseUI(false);
                 }
             });
@@ -749,11 +764,11 @@ function togglePlayPause() {
 
     if (activePlayer.isPlaying) {
         activePlayer.pause();
-        backgroundAudio.pause();
+        streamAudio.pause();
         updatePlayPauseUI(false);
     } else {
         activePlayer.play();
-        backgroundAudio.play().catch(e => console.warn('Background Keep-Alive blocked:', e));
+        streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
         updatePlayPauseUI(true);
     }
 }
@@ -799,7 +814,7 @@ function handleSongEnd() {
         if (activePlayer) {
             activePlayer.seek(0);
             activePlayer.play();
-            backgroundAudio.play().catch(e => console.warn('Background Keep-Alive blocked:', e));
+            streamAudio.play().catch(e => console.warn('Stream play blocked:', e));
         }
     } else if (playbackMode === 'single') {
         // Stop (Single)
