@@ -440,7 +440,7 @@ async function playSong(index) {
 
     mainAudio.pause();
 
-    // Cycle 3: Precise MIME Type Inference instead of generic audio/mpeg
+    // MIME Type Inference
     let ext = (song.name || '').split('.').pop().toLowerCase();
     const mimeMap = {
         'mp3': 'audio/mpeg',
@@ -451,29 +451,22 @@ async function playSong(index) {
         'webm': 'audio/webm'
     };
 
-    // Fallback to song.blob.type only if it exists and is not generic "application/octet-stream"
     let safeType = song.blob.type;
     if (!safeType || safeType === 'application/octet-stream' || safeType === '') {
         safeType = mimeMap[ext] || 'audio/mpeg';
     }
 
     const safeBlob = new Blob([song.blob], { type: safeType });
-
-    // Cycle 1: Bypass Service Worker to avoid iOS Safari Range Request bugs on `<audio>`
     let audioUrl = URL.createObjectURL(safeBlob);
     currentObjectURL = audioUrl;
 
-    // Set the native source
-    // Try Service Worker Proxy first for Range request support (better for iOS)
     let swUrl = `audio/${song.id}?t=${Date.now()}`;
-
-    // Check if SW is active
     let useSW = ('serviceWorker' in navigator && navigator.serviceWorker.controller);
 
+    // Primary source
     mainAudio.src = useSW ? swUrl : audioUrl;
-    mainAudio.load(); // Force iOS to process the new source immediately
+    mainAudio.load();
 
-    // Apply speed and pitch settings
     const savedSpeed = song.speed !== undefined ? song.speed : parseFloat(speedSlider.value);
     const savedPitch = song.preservePitch !== undefined ? song.preservePitch : pitchToggle.checked;
 
@@ -486,14 +479,12 @@ async function playSong(index) {
 
     loadingOverlay.classList.remove('hidden');
 
-    try {
-        await mainAudio.play();
+    // Guaranteed UI Unblocker: Once it starts playing, setup UI and hide overlay.
+    const onPlayStarted = () => {
         loadingOverlay.classList.add('hidden');
-
         updatePlayPauseUI(true);
         currentTitle.textContent = song.name;
         modalSongTitle.textContent = song.name;
-
         renderSongList();
         generateSeekMarkers();
 
@@ -519,45 +510,51 @@ async function playSong(index) {
                 }
             });
         }
-    } catch (error) {
-        console.warn("Primary playback (SW/Blob) failed. Attempting Data URI recovery...", error);
+        mainAudio.removeEventListener('playing', onPlayStarted);
+    };
 
-        // Final fallback: Base64 Data URIs (bypasses SW/Blob restrictions)
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-            mainAudio.src = reader.result;
+    mainAudio.addEventListener('playing', onPlayStarted);
+
+    // Failsafe timeout to prevent spinning loaders if the promise hangs
+    const failsafe = setTimeout(() => {
+        loadingOverlay.classList.add('hidden');
+    }, 5000);
+
+    try {
+        await mainAudio.play();
+        clearTimeout(failsafe);
+    } catch (error) {
+        clearTimeout(failsafe);
+        // Fallback: If SW Proxy failed, fallback to direct Blob ObjectURL.
+        // We absolutely AVOID Base64 Data URIs as they mathematically freeze the main thread for large WAVs.
+        if (useSW) {
+            console.warn("SW Proxy rejected. Falling back to ObjectURL...", error);
+            mainAudio.src = audioUrl;
             mainAudio.load();
             mainAudio.playbackRate = savedSpeed;
             mainAudio.preservesPitch = savedPitch;
-
             try {
                 await mainAudio.play();
-                loadingOverlay.classList.add('hidden');
-                updatePlayPauseUI(true);
-                currentTitle.textContent = song.name;
-                modalSongTitle.textContent = song.name;
-                renderSongList();
-                generateSeekMarkers();
             } catch (fallbackError) {
                 loadingOverlay.classList.add('hidden');
-                console.error("Critical playback failure:", fallbackError);
+                mainAudio.removeEventListener('playing', onPlayStarted);
 
                 if (fallbackError.name === 'NotAllowedError') {
-                    // Gesture lost. Provide a manual trigger.
                     const retry = confirm("iOS blocked automatic playback. Tap OK to retry playing manually.");
                     if (retry) {
-                        mainAudio.play().then(() => {
-                            updatePlayPauseUI(true);
-                            renderSongList();
-                        }).catch(e => alert("Manual retry failed: " + e.message));
+                        mainAudio.play().catch(e => alert("Manual retry failed: " + e.message));
                     }
                 } else {
-                    alert(`Failed to play ${ext.toUpperCase()}.\nError: ${fallbackError.name}\nMessage: ${fallbackError.message}`);
+                    alert(`Failed to play ${ext.toUpperCase()}.\nError: ${fallbackError.name}`);
                 }
                 updatePlayPauseUI(false);
             }
-        };
-        reader.readAsDataURL(safeBlob);
+        } else {
+            loadingOverlay.classList.add('hidden');
+            mainAudio.removeEventListener('playing', onPlayStarted);
+            alert(`Failed to play ${ext.toUpperCase()}.\nError: ${error.name}\nMessage: ${error.message}`);
+            updatePlayPauseUI(false);
+        }
     }
 }
 
