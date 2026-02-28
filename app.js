@@ -403,29 +403,8 @@ window.addEventListener('orientationchange', () => {
     setTimeout(adjustLibraryHeight, 200); // Wait for layout to settle
 });
 
-// Single strict AudioContext initializer
-function unlockAudioContext(forceUnlock = false) {
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-        // Create the global media destination if it doesn't exist
-        mediaStreamDestination = audioCtx.createMediaStreamDestination();
-        streamAudio.srcObject = mediaStreamDestination.stream;
 
-        // Assign a silent audio blob to lockScreenAudio to keep iOS lock screen controls active
-        // This replaces the MediaElementSourceNode approach which caused issues with button callbacks.
-        lockScreenAudio.src = createSilentAudio();
-        lockScreenAudio.load();
-
-        if (typeof unmuteIOS === 'function') unmuteIOS(audioCtx);
-    }
-    // Apple requires synchronous resume + dummy oscillator execution within click event
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
-
-}
-
-
+// ─── Playback Functions ──────────────────────────────────────────────────────
 
 async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
@@ -513,13 +492,16 @@ async function playSong(index) {
             });
         }
     } catch (error) {
-        console.warn("Blob URL rejected by iOS Safari natively. Attempting Cycle 4 Base64 Fallback...", error);
+        console.warn("Playback failed. Attempting immediate Base64 recovery...", error);
 
-        // Cycle 4: Robust Base64 Fallback (Data URIs)
-        // Bypasses iOS Blob Sandbox strictness completely by embedding the file as a string.
+        // Cycle 4: Gesture-Safe Fallback
+        // Some iOS versions block Blob URLs. Base64 Data URIs work, but the FileReader is ASYNC.
+        // Async gaps = Gesture Loss. 
+        // We will try to load it and play. If NotAllowedError occurs, we'll show a "Tap to Play" overlay.
+
         const reader = new FileReader();
         reader.onloadend = async () => {
-            mainAudio.src = reader.result; // Base64 Data URI
+            mainAudio.src = reader.result;
             mainAudio.load();
             mainAudio.playbackRate = savedSpeed;
             mainAudio.preservesPitch = savedPitch;
@@ -534,15 +516,22 @@ async function playSong(index) {
                 generateSeekMarkers();
             } catch (fallbackError) {
                 loadingOverlay.classList.add('hidden');
-                console.error("Critical: Base64 Fallback also failed:", fallbackError);
-                alert("Failed to play audio. The file format (" + ext + ") might be unsupported by iOS Safari natively.");
+                console.error("Fallback play failed:", fallbackError);
+
+                if (fallbackError.name === 'NotAllowedError') {
+                    // Gesture lost. Provide a manual trigger.
+                    const retry = confirm("iOS blocked automatic playback for this format. Tap OK to retry playing manually.");
+                    if (retry) {
+                        mainAudio.play().then(() => {
+                            updatePlayPauseUI(true);
+                            renderSongList();
+                        }).catch(e => alert("Manual play failed: " + e.message));
+                    }
+                } else {
+                    alert("Failed to play: " + ext.toUpperCase() + " format may be unsupported.");
+                }
                 updatePlayPauseUI(false);
             }
-        };
-        reader.onerror = () => {
-            loadingOverlay.classList.add('hidden');
-            alert("Failed to read audio file for fallback decoding.");
-            updatePlayPauseUI(false);
         };
         reader.readAsDataURL(safeBlob);
     }
@@ -577,8 +566,9 @@ function updateSpeed(saveToDB = true) {
     if (speedUpdateFrame) cancelAnimationFrame(speedUpdateFrame);
     speedUpdateFrame = requestAnimationFrame(() => {
         const shouldPreserve = pitchToggle.checked;
-        if (activePlayer) {
-            activePlayer.setSpeedAndPitch(speed, shouldPreserve);
+        if (mainAudio.src) {
+            mainAudio.playbackRate = speed;
+            mainAudio.preservesPitch = shouldPreserve;
         }
     });
 }
@@ -592,8 +582,9 @@ function updateSpeedAndRender() {
 function updatePitchPreservation(saveToDB = true) {
     const preserve = pitchToggle.checked;
 
-    if (activePlayer) {
-        activePlayer.setSpeedAndPitch(parseFloat(speedSlider.value), preserve);
+    if (mainAudio.src) {
+        mainAudio.playbackRate = parseFloat(speedSlider.value);
+        mainAudio.preservesPitch = preserve;
     }
 
     if (saveToDB && currentSongIndex !== -1) {
@@ -733,9 +724,8 @@ skipBackBtn.addEventListener('click', (e) => {
         return;
     }
 
-    if (activePlayer) {
-        activePlayer.seek(0);
-        lockScreenAudio.currentTime = 0;
+    if (mainAudio.src) {
+        mainAudio.currentTime = 0;
         updatePlayPauseUI(true);
     } // If repeating one, just seek back
 });
@@ -753,16 +743,17 @@ skipFwdBtn.addEventListener('click', (e) => {
 function startFastForward() {
     isLongPressing = true;
     longPressTimer = setTimeout(() => {
-        if (activePlayer) activePlayer.setSpeedAndPitch(2.0, false);
+        if (mainAudio.src) mainAudio.playbackRate = 2.0;
     }, 500); // Wait 500ms to consider it a hold
 }
 
 function stopFastForward() {
     clearTimeout(longPressTimer);
-    if (activePlayer && activePlayer.speed === 2.0 && !pitchToggle.checked) {
+    if (mainAudio.src && mainAudio.playbackRate === 2.0) {
         // We only explicitly check for the FWD state here to restore
         const speed = parseFloat(speedSlider.value);
-        activePlayer.setSpeedAndPitch(speed, pitchToggle.checked);
+        mainAudio.playbackRate = speed;
+        mainAudio.preservesPitch = pitchToggle.checked;
         // Prevent next 'click' from firing seek (if any)
         setTimeout(() => { isLongPressing = false; }, 50);
         return true; // Was long press
@@ -784,9 +775,9 @@ function startRewind() {
     isLongPressing = true;
     longPressTimer = setTimeout(() => {
         rewindInterval = setInterval(() => {
-            if (activePlayer) {
-                const newTime = Math.max(0, activePlayer.currentTime - 0.2);
-                activePlayer.seek((newTime / activePlayer.duration) * 100);
+            if (mainAudio.src) {
+                const newTime = Math.max(0, mainAudio.currentTime - 0.2);
+                mainAudio.currentTime = newTime;
             }
         }, 50);
     }, 500);
@@ -811,7 +802,7 @@ function handleBackTouchEnd(e) {
     const wasLongPress = stopRewind();
     if (!wasLongPress) {
         // Always restart
-        if (activePlayer) activePlayer.seek(0);
+        if (mainAudio.src) mainAudio.currentTime = 0;
     }
 }
 
@@ -835,9 +826,9 @@ skipBackBtn.addEventListener('mouseleave', stopRewind);
 let timeUpdateFrame = null;
 
 function skipSeconds(seconds) {
-    if (activePlayer) {
-        const current = activePlayer.currentTime;
-        const duration = activePlayer.duration;
+    if (mainAudio.src) {
+        const current = mainAudio.currentTime;
+        const duration = mainAudio.duration;
         let newTime = current + seconds;
 
         if (newTime < 0) newTime = 0;
@@ -847,37 +838,45 @@ function skipSeconds(seconds) {
         }
 
         const percentage = (newTime / duration) * 100;
-        activePlayer.seek(percentage);
+        mainAudio.currentTime = newTime;
     }
 }
 
-function loopTimeUpdate() {
-    if (activePlayer && activePlayer.isPlaying) {
-        const duration = activePlayer.duration;
-        const current = activePlayer.currentTime;
+// ─── Native Progress Polling (Replacement for loopTimeUpdate) ───────────────
+mainAudio.addEventListener('timeupdate', () => {
+    const duration = mainAudio.duration || 0;
+    const current = mainAudio.currentTime || 0;
 
-        if (duration > 0 && !isDraggingSeek) {
-            const percent = (current / duration) * 100;
-            const validPercent = isNaN(percent) ? 0 : percent;
+    if (duration > 0 && !isDraggingSeek) {
+        const percent = (current / duration) * 100;
+        const validPercent = isNaN(percent) ? 0 : percent;
 
-            // Update Main Slider
-            seekSlider.value = validPercent;
-            currentTimeEl.textContent = formatTime(current);
+        seekSlider.value = validPercent;
+        currentTimeEl.textContent = formatTime(current);
+        modalSeekSlider.value = validPercent;
+        modalCurrentTime.textContent = formatTime(current);
+        durationEl.textContent = formatTime(duration);
 
-            // Update Modal Slider
-            modalSeekSlider.value = validPercent;
-            modalCurrentTime.textContent = formatTime(current);
-            durationEl.textContent = formatTime(duration);
-            updateSeekMarkers();            // Update Background MediaSession Position (throttle because setPositionState can be expensive)
-            if (Math.floor(current) !== Math.floor(activePlayer._lastMediaSessionUpdate || 0)) {
-                updateMediaSessionPosition();
-                activePlayer._lastMediaSessionUpdate = current;
+        // Update markers & MediaSession
+        updateSeekMarkers();
+        if (Math.floor(current) !== Math.floor(mainAudio._lastMediaSessionUpdate || 0)) {
+            if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+                navigator.mediaSession.setPositionState({
+                    duration: duration,
+                    playbackRate: mainAudio.playbackRate,
+                    position: current
+                });
             }
+            mainAudio._lastMediaSessionUpdate = current;
         }
     }
-    timeUpdateFrame = requestAnimationFrame(loopTimeUpdate);
-}
-timeUpdateFrame = requestAnimationFrame(loopTimeUpdate);
+});
+
+mainAudio.addEventListener('ended', handleSongEnd);
+mainAudio.addEventListener('loadedmetadata', () => {
+    durationEl.textContent = formatTime(mainAudio.duration);
+    modalDuration.textContent = formatTime(mainAudio.duration);
+});
 
 seekSlider.addEventListener('input', () => {
     isSeeking = true;
@@ -925,7 +924,7 @@ modalSeekSlider.addEventListener('change', () => {
 
 // Update Seek Markers (Modal - Update Text)
 function updateSeekMarkers() {
-    const duration = activePlayer ? activePlayer.duration : 0;
+    const duration = mainAudio.duration || 0;
     if (isNaN(duration) || duration === 0) return;
 
     const m25 = document.getElementById('marker-25');
@@ -1005,7 +1004,7 @@ document.body.addEventListener('touchmove', function (e) {
 // Fix sliders on mobile - Explicit isolation
 // Custom Seek Logic for Mobile (Tap/Drag Anywhere)
 function handleSeekTouch(e) {
-    const duration = activePlayer ? activePlayer.duration : 0;
+    const duration = mainAudio.duration || 0;
     if (!duration) return;
 
     // Prevent default to stop scrolling/native behavior
@@ -1027,7 +1026,7 @@ function handleSeekTouch(e) {
     seekSlider.value = percent;
 
     const time = (percent / 100) * duration;
-    if (activePlayer) activePlayer.seek(percent);
+    if (mainAudio.src) mainAudio.currentTime = time;
     currentTimeEl.textContent = formatTime(time);
 }
 
@@ -1044,7 +1043,7 @@ speedSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }
 
 // Modal Seek Slider logic with Tap-to-Seek support
 function handleModalSeekTouch(e) {
-    const duration = activePlayer ? activePlayer.duration : 0;
+    const duration = mainAudio.duration || 0;
     if (!duration) return;
 
     // Prevent default to stop scrolling/native behavior
@@ -1066,8 +1065,8 @@ function handleModalSeekTouch(e) {
     modalSeekSlider.value = percent;
 
     const time = (percent / 100) * duration;
-    if (activePlayer) {
-        activePlayer.seek(percent);
+    if (mainAudio.src) {
+        mainAudio.currentTime = time;
         // lockScreenAudio.currentTime = time; // No longer sync lockScreenAudio currentTime
     }
     modalCurrentTime.textContent = formatTime(time);
@@ -1082,10 +1081,9 @@ modalSeekSlider.addEventListener('touchend', () => {
 
 // Skip Time
 window.skipTime = function (seconds) {
-    if (activePlayer) {
-        const newTime = Math.max(0, activePlayer.currentTime + seconds);
-        const percent = (newTime / activePlayer.duration) * 100;
-        activePlayer.seek(percent);
+    if (mainAudio.src) {
+        const newTime = Math.max(0, mainAudio.currentTime + seconds);
+        mainAudio.currentTime = newTime;
     }
 };
 
