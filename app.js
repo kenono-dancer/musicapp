@@ -443,7 +443,13 @@ async function playSong(index) {
     currentObjectURL = audioUrl;
 
     // Set the native source
-    mainAudio.src = audioUrl;
+    // Try Service Worker Proxy first for Range request support (better for iOS)
+    let swUrl = `audio/${song.id}?t=${Date.now()}`;
+
+    // Check if SW is active
+    let useSW = ('serviceWorker' in navigator && navigator.serviceWorker.controller);
+
+    mainAudio.src = useSW ? swUrl : audioUrl;
     mainAudio.load(); // Force iOS to process the new source immediately
 
     // Apply speed and pitch settings
@@ -493,13 +499,9 @@ async function playSong(index) {
             });
         }
     } catch (error) {
-        console.warn("Playback failed. Attempting immediate Base64 recovery...", error);
+        console.warn("Primary playback (SW/Blob) failed. Attempting Data URI recovery...", error);
 
-        // Cycle 4: Gesture-Safe Fallback
-        // Some iOS versions block Blob URLs. Base64 Data URIs work, but the FileReader is ASYNC.
-        // Async gaps = Gesture Loss. 
-        // We will try to load it and play. If NotAllowedError occurs, we'll show a "Tap to Play" overlay.
-
+        // Final fallback: Base64 Data URIs (bypasses SW/Blob restrictions)
         const reader = new FileReader();
         reader.onloadend = async () => {
             mainAudio.src = reader.result;
@@ -517,19 +519,19 @@ async function playSong(index) {
                 generateSeekMarkers();
             } catch (fallbackError) {
                 loadingOverlay.classList.add('hidden');
-                console.error("Fallback play failed:", fallbackError);
+                console.error("Critical playback failure:", fallbackError);
 
                 if (fallbackError.name === 'NotAllowedError') {
                     // Gesture lost. Provide a manual trigger.
-                    const retry = confirm("iOS blocked automatic playback for this format. Tap OK to retry playing manually.");
+                    const retry = confirm("iOS blocked automatic playback. Tap OK to retry playing manually.");
                     if (retry) {
                         mainAudio.play().then(() => {
                             updatePlayPauseUI(true);
                             renderSongList();
-                        }).catch(e => alert("Manual play failed: " + e.message));
+                        }).catch(e => alert("Manual retry failed: " + e.message));
                     }
                 } else {
-                    alert("Failed to play: " + ext.toUpperCase() + " format may be unsupported.");
+                    alert(`Failed to play ${ext.toUpperCase()}.\nError: ${fallbackError.name}\nMessage: ${fallbackError.message}`);
                 }
                 updatePlayPauseUI(false);
             }
