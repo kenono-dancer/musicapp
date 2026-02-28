@@ -280,15 +280,18 @@ button svg {
 
 .bar-speed-controls {
     width: 100%;
-    margin-bottom: 4px;
+    margin-top: 8px;
+    pointer-events: auto !important;
 }
 
 #bar-speed-slider {
     appearance: none;
     -webkit-appearance: none;
-    height: 30px;
+    height: 36px;
+    /* Larger touch target */
     background: transparent;
     outline: none;
+    pointer-events: auto !important;
 }
 
 #bar-speed-slider::-webkit-slider-runnable-track {
