@@ -439,16 +439,18 @@ async function playSong(index) {
 
     mainAudio.pause();
 
-    let audioUrl = navigator.serviceWorker && navigator.serviceWorker.controller
-        ? `audio/${song.id}`
-        : URL.createObjectURL(song.blob);
+    // Cycle 2: Deep iOS Format Compatibility. Files imported from iOS might lack a valid MIME type.
+    // Safari's native <audio> will reject playback if type is empty. We enforce a generic audio type.
+    const safeType = song.blob.type || 'audio/mpeg';
+    const safeBlob = new Blob([song.blob], { type: safeType });
 
-    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
-        currentObjectURL = audioUrl;
-    }
+    // Cycle 1: Bypass Service Worker to avoid iOS Safari Range Request bugs on `<audio>`
+    let audioUrl = URL.createObjectURL(safeBlob);
+    currentObjectURL = audioUrl;
 
     // Set the native source
     mainAudio.src = audioUrl;
+    mainAudio.load(); // Force iOS to process the new source immediately
 
     // Apply speed and pitch settings
     const savedSpeed = song.speed !== undefined ? song.speed : parseFloat(speedSlider.value);
