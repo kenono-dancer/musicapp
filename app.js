@@ -67,21 +67,57 @@ streamAudio.setAttribute('playsinline', '');
 document.body.appendChild(streamAudio);
 
 // ─── MediaSession Activator (Lock Screen Hook) ──────────────────────────────
-// iOS Safari strictly requires an HTML <audio> tag with a concrete `src` file
-// (and a valid duration > 0) to expose the system lock screen Media UI.
-// We load the actual song Blob into `lockScreenAudio`, giving it duration.
-// To prevent double playback, we route its output into a MediaElementSourceNode
-// but intentionally *never* connect it to the destination.
+// iOS Safari strictly requires an HTML <audio> tag with a physical `src` file
+// that has a valid duration (>0) to expose MediaSession buttons. If we disconnect
+// the audio graph, iOS kills interactivity.
+// Solution: We play a dynamically generated 1-hour pure silence WAV file. 
+// It remains fully connected but outputs literal silence, allowing MediaSession
+// to hook into the system without duplicating the actual music track.
+function createSilentAudioUrl() {
+    const duration = 3600; // 1 hour
+    const sampleRate = 8000;
+    const numChannels = 1;
+    const bitsPerSample = 8;
+    const blockAlign = numChannels * (bitsPerSample / 8);
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = duration * byteRate;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    const writeString = (offset, string) => {
+        for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    const uint8Arr = new Uint8Array(buffer);
+    // Fill with silence (128 is center for 8-bit unsigned)
+    uint8Arr.fill(128, 44);
+
+    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+}
+
 const lockScreenAudio = new Audio();
-// We won't loop it, because iOS might not like infinite loops for lock screens.
-// We just let it play alongside activePlayer.
+// Let it loop silently
+lockScreenAudio.loop = true;
 lockScreenAudio.volume = 1.0;
-lockScreenAudio.setAttribute('playsinline', '');
+lockScreenAudio.src = createSilentAudioUrl(); // Hydrate the silence
 
 let audioCtx = null;
 let activePlayer = null;
 let mediaStreamDestination = null;
-let lockScreenSourceNode = null;
 
 class SoundTouchPlayer {
     constructor(context, audioBuffer, onEnd) {
@@ -434,7 +470,7 @@ function deleteSong(id, event) {
         streamAudio.pause();
         streamAudio.srcObject = null; // Clear the stream
         lockScreenAudio.pause();
-        lockScreenAudio.src = '';
+        lockScreenAudio.currentTime = 0;
         if (activePlayer) activePlayer.destroy();
         activePlayer = null;
         currentTitle.textContent = 'Not Playing';
@@ -629,9 +665,10 @@ function unlockAudioContext(forceUnlock = false) {
         mediaStreamDestination = audioCtx.createMediaStreamDestination();
         streamAudio.srcObject = mediaStreamDestination.stream;
 
-        // Disconnect lockScreenAudio physically so it's silent but still "active" for iOS
-        lockScreenSourceNode = audioCtx.createMediaElementSource(lockScreenAudio);
-        // We do intentionally NOT connect lockScreenSourceNode to destination.
+        // Assign a silent audio blob to lockScreenAudio to keep iOS lock screen controls active
+        // This replaces the MediaElementSourceNode approach which caused issues with button callbacks.
+        lockScreenAudio.src = createSilentAudio();
+        lockScreenAudio.load();
 
         if (typeof unmuteIOS === 'function') unmuteIOS(audioCtx);
     }
@@ -664,7 +701,7 @@ async function playSong(index) {
         streamAudio.pause();
         streamAudio.srcObject = null;
         lockScreenAudio.pause();
-        lockScreenAudio.src = '';
+        // lockScreenAudio.src = ''; // No longer clear src, it's always silent audio
         activePlayer = null;
     }
 
@@ -683,8 +720,8 @@ async function playSong(index) {
 
     // Give lockScreenAudio the real URL so iOS recognizes its duration,
     // but the AudioContext has swallowed its output node so it remains silent.
-    lockScreenAudio.src = audioUrl;
-    lockScreenAudio.load();
+    // lockScreenAudio.src = audioUrl; // Removed: lockScreenAudio always plays silent audio
+    // lockScreenAudio.load(); // Removed: lockScreenAudio always plays silent audio
 
     loadingOverlay.classList.remove('hidden');
 
@@ -750,14 +787,10 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
             navigator.mediaSession.setActionHandler('seekto', (details) => {
-                if (activePlayer && details.seekTime !== undefined) {
-                    const duration = activePlayer.duration;
-                    if (duration > 0) {
-                        const newTime = Math.min(Math.max(details.seekTime, 0), duration);
-                        const percent = (newTime / duration) * 100;
-                        activePlayer.seek(percent);
-                        lockScreenAudio.currentTime = newTime; // Keep lock screen time synced
-                    }
+                if (details.seekTime !== undefined && activePlayer) {
+                    const percentage = (details.seekTime / activePlayer.duration) * 100;
+                    activePlayer.seek(percentage);
+                    updateMediaSessionPosition();
                 }
             });
         }
@@ -1199,10 +1232,7 @@ seekSlider.addEventListener('input', () => {
     const duration = activePlayer ? activePlayer.duration : 0;
     const time = (seekSlider.value / 100) * duration;
     currentTimeEl.textContent = formatTime(time);
-    if (activePlayer) {
-        activePlayer.seek(seekSlider.value);
-        lockScreenAudio.currentTime = time;
-    }
+    if (activePlayer) activePlayer.seek(seekSlider.value);
 });
 
 seekSlider.addEventListener('change', () => {
@@ -1233,10 +1263,7 @@ modalSeekSlider.addEventListener('input', () => {
     const duration = activePlayer ? activePlayer.duration : 0;
     const time = (modalSeekSlider.value / 100) * duration;
     modalCurrentTime.textContent = formatTime(time);
-    if (activePlayer) {
-        activePlayer.seek(modalSeekSlider.value);
-        lockScreenAudio.currentTime = time;
-    }
+    if (activePlayer) activePlayer.seek(modalSeekSlider.value);
 
 });
 
@@ -1279,7 +1306,7 @@ expandControlsBtn.addEventListener('click', () => {
     generateSeekMarkers(); // Ensure markers are tailored to modal if we dynamic gen them
 });
 
-// Re-generate markers for modal to ensure new layout logic? 
+// Re-generate markers for modal to ensure new layout logic?
 // Actually generateSeekMarkers in current code targets `modalSeekMarkers` div.
 // We updated HTML to have id="modal-seek-markers" inside .seek-container.
 // We should check generateSeekMarkers implementation.
@@ -1348,10 +1375,7 @@ function handleSeekTouch(e) {
     seekSlider.value = percent;
 
     const time = (percent / 100) * duration;
-    if (activePlayer) {
-        activePlayer.seek(percent);
-        lockScreenAudio.currentTime = time;
-    }
+    if (activePlayer) activePlayer.seek(percent);
     currentTimeEl.textContent = formatTime(time);
 }
 
@@ -1392,7 +1416,7 @@ function handleModalSeekTouch(e) {
     const time = (percent / 100) * duration;
     if (activePlayer) {
         activePlayer.seek(percent);
-        lockScreenAudio.currentTime = time;
+        // lockScreenAudio.currentTime = time; // No longer sync lockScreenAudio currentTime
     }
     modalCurrentTime.textContent = formatTime(time);
 }
@@ -1410,7 +1434,6 @@ window.skipTime = function (seconds) {
         const newTime = Math.max(0, activePlayer.currentTime + seconds);
         const percent = (newTime / activePlayer.duration) * 100;
         activePlayer.seek(percent);
-        lockScreenAudio.currentTime = newTime;
     }
 };
 
