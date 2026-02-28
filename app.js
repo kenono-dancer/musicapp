@@ -49,6 +49,17 @@ let rewindInterval = null;
 let isLongPressing = false;
 let currentPlaylistId = null; // null = Main Library, >0 = Playlist ID
 
+// ─── Background Keep-Alive ──────────────────────────────────────────────────
+// A tiny, silent base64 WAV file used purely to trick iOS into keeping the tab 
+// alive in the background. It is played/paused in sync with the AudioWorklet.
+const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+let backgroundAudio = new Audio();
+backgroundAudio.src = SILENT_WAV_BASE64;
+backgroundAudio.loop = true;
+// Volume doesn't matter since it's silent, but keeping it unmuted helps iOS 
+// prioritize the process for background retention.
+backgroundAudio.volume = 1.0;
+
 // ─── Phase Vocoder Audio Engine (SoundTouchJS) ─────────────────────────────
 // iOS Safari's native <audio> time-stretching produces metallic noise when
 // slowing down (rate < 1.0) and dynamically ignores preservesPitch toggles.
@@ -627,6 +638,8 @@ async function playSong(index) {
 
     if (activePlayer) {
         activePlayer.pause();
+        backgroundAudio.pause();
+        backgroundAudio.currentTime = 0;
         activePlayer = null;
     }
 
@@ -677,6 +690,7 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('play', () => {
                 if (activePlayer && !activePlayer.isPlaying) {
                     activePlayer.play();
+                    backgroundAudio.play().catch(e => console.warn('Background Keep-Alive blocked:', e));
                     updatePlayPauseUI(true);
                 } else if (!activePlayer && songs.length > 0) {
                     playSong(0);
@@ -685,6 +699,7 @@ async function playSong(index) {
             navigator.mediaSession.setActionHandler('pause', () => {
                 if (activePlayer && activePlayer.isPlaying) {
                     activePlayer.pause();
+                    backgroundAudio.pause();
                     updatePlayPauseUI(false);
                 }
             });
@@ -734,9 +749,11 @@ function togglePlayPause() {
 
     if (activePlayer.isPlaying) {
         activePlayer.pause();
+        backgroundAudio.pause();
         updatePlayPauseUI(false);
     } else {
         activePlayer.play();
+        backgroundAudio.play().catch(e => console.warn('Background Keep-Alive blocked:', e));
         updatePlayPauseUI(true);
     }
 }
@@ -782,6 +799,7 @@ function handleSongEnd() {
         if (activePlayer) {
             activePlayer.seek(0);
             activePlayer.play();
+            backgroundAudio.play().catch(e => console.warn('Background Keep-Alive blocked:', e));
         }
     } else if (playbackMode === 'single') {
         // Stop (Single)
@@ -973,12 +991,14 @@ modalPlayPauseBtn.addEventListener('click', togglePlayPause);
 skipBackBtn.addEventListener('click', (e) => {
     // If we just finished a long press, ignore the click (mouseup triggers click)
     if (isLongPressing) {
-        isLongPressing = false;
+        e.preventDefault();
         return;
     }
 
-    // Always restart current song
-    if (activePlayer) activePlayer.seek(0);
+    if (activePlayer) {
+        activePlayer.seek(0);
+        updatePlayPauseUI(true);
+    } // If repeating one, just seek back
 });
 
 // Skip Forward Button (Standard Click)
