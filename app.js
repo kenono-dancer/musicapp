@@ -439,9 +439,23 @@ async function playSong(index) {
 
     mainAudio.pause();
 
-    // Cycle 2: Deep iOS Format Compatibility. Files imported from iOS might lack a valid MIME type.
-    // Safari's native <audio> will reject playback if type is empty. We enforce a generic audio type.
-    const safeType = song.blob.type || 'audio/mpeg';
+    // Cycle 3: Precise MIME Type Inference instead of generic audio/mpeg
+    let ext = (song.name || '').split('.').pop().toLowerCase();
+    const mimeMap = {
+        'mp3': 'audio/mpeg',
+        'm4a': 'audio/mp4', 'm4r': 'audio/mp4', 'aac': 'audio/aac',
+        'wav': 'audio/wav',
+        'ogg': 'audio/ogg',
+        'flac': 'audio/flac',
+        'webm': 'audio/webm'
+    };
+
+    // Fallback to song.blob.type only if it exists and is not generic "application/octet-stream"
+    let safeType = song.blob.type;
+    if (!safeType || safeType === 'application/octet-stream' || safeType === '') {
+        safeType = mimeMap[ext] || 'audio/mpeg';
+    }
+
     const safeBlob = new Blob([song.blob], { type: safeType });
 
     // Cycle 1: Bypass Service Worker to avoid iOS Safari Range Request bugs on `<audio>`
@@ -499,10 +513,38 @@ async function playSong(index) {
             });
         }
     } catch (error) {
-        loadingOverlay.classList.add('hidden');
-        console.error("Error playing audio:", error);
-        alert("Failed to play audio. The file might be corrupted or playback blocked.");
-        updatePlayPauseUI(false);
+        console.warn("Blob URL rejected by iOS Safari natively. Attempting Cycle 4 Base64 Fallback...", error);
+
+        // Cycle 4: Robust Base64 Fallback (Data URIs)
+        // Bypasses iOS Blob Sandbox strictness completely by embedding the file as a string.
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            mainAudio.src = reader.result; // Base64 Data URI
+            mainAudio.load();
+            mainAudio.playbackRate = savedSpeed;
+            mainAudio.preservesPitch = savedPitch;
+
+            try {
+                await mainAudio.play();
+                loadingOverlay.classList.add('hidden');
+                updatePlayPauseUI(true);
+                currentTitle.textContent = song.name;
+                modalSongTitle.textContent = song.name;
+                renderSongList();
+                generateSeekMarkers();
+            } catch (fallbackError) {
+                loadingOverlay.classList.add('hidden');
+                console.error("Critical: Base64 Fallback also failed:", fallbackError);
+                alert("Failed to play audio. The file format (" + ext + ") might be unsupported by iOS Safari natively.");
+                updatePlayPauseUI(false);
+            }
+        };
+        reader.onerror = () => {
+            loadingOverlay.classList.add('hidden');
+            alert("Failed to read audio file for fallback decoding.");
+            updatePlayPauseUI(false);
+        };
+        reader.readAsDataURL(safeBlob);
     }
 }
 
