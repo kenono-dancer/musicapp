@@ -733,6 +733,24 @@ fileInput.addEventListener('change', async (e) => {
     }
 });
 
+function togglePlayPause() {
+    if (mainAudio.paused) {
+        if (mainAudio.src) {
+            mainAudio.play().then(() => {
+                updatePlayPauseUI(true);
+            }).catch(e => {
+                console.error("Manual toggle play failed:", e);
+                if (e.name === 'NotAllowedError') {
+                    alert("Playback blocked. Please tap again to start.");
+                }
+            });
+        }
+    } else {
+        mainAudio.pause();
+        updatePlayPauseUI(false);
+    }
+}
+
 playPauseBtn.addEventListener('click', togglePlayPause);
 modalPlayPauseBtn.addEventListener('click', togglePlayPause);
 
