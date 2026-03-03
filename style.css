@@ -323,6 +323,17 @@ button svg {
     pointer-events: none;
 }
 
+/* Offset containers so they correspond to thumb travel path (inset by thumb radius) */
+.player-bar .seek-markers {
+    left: 6px;
+    width: calc(100% - 12px);
+}
+
+#modal-seek-markers {
+    left: 8px;
+    width: calc(100% - 16px);
+}
+
 .seek-marker {
     position: absolute;
     top: 0;
