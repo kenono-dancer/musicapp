@@ -247,8 +247,8 @@ button svg {
 }
 
 #seek-slider {
-    width: calc(100% + 12px);
-    margin-left: -6px;
+    width: 100%;
+    margin-left: 0;
     appearance: none;
     -webkit-appearance: none;
     height: 30px;
@@ -265,9 +265,7 @@ button svg {
     width: 100%;
     height: 4px;
     background-color: rgba(255, 255, 255, 0.2);
-    background-clip: content-box;
-    padding: 0 6px;
-    border-radius: 8px;
+    border-radius: 2px;
 }
 
 #seek-slider::-webkit-slider-thumb {
@@ -538,8 +536,8 @@ button svg {
 }
 
 #modal-seek-slider {
-    width: calc(100% + 16px);
-    margin-left: -8px;
+    width: 100%;
+    margin-left: 0;
     appearance: none;
     -webkit-appearance: none;
     height: 4px;
@@ -557,9 +555,7 @@ button svg {
     width: 100%;
     height: 4px;
     background-color: #333;
-    background-clip: content-box;
-    padding: 0 8px;
-    border-radius: 10px;
+    border-radius: 2px;
 }
 
 #modal-seek-slider::-webkit-slider-thumb {
