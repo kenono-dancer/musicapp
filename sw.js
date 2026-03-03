@@ -1,4 +1,4 @@
-const VERSION = new URL(self.location).searchParams.get('v') || '2.120.7';
+const VERSION = new URL(self.location).searchParams.get('v') || '2.120.8';
 const CACHE_NAME = 'music-player-v' + VERSION;
 const ASSETS = [
     './',
