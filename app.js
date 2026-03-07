@@ -56,17 +56,24 @@ let isTransitioning = false; // Multi-tap prevention flag
 let renderFrame = null; // Debounce frame for song list rendering
 
 // ─── Phase Vocoder Audio Engine (SoundTouchJS) ─────────────────────────────
-// iOS Safari's native <audio> time-stretching produces metallic noise when
-// slowing down (rate < 1.0) and dynamically ignores preservesPitch toggles.
-// We bypass the native playback engine and use SoundTouchJS (a Phase Vocoder).
-//
+let audioEngine = localStorage.getItem('audioEngine') || 'native'; // 'native' or 'soundtouch'
+
 // ─── Orthodox Native Audio Playback ──────────────────────────────────────────
-// Reverted to pure HTML5 <audio> for 100% compliant iOS lock screen and 
-// background audio support, discarding SoundTouchJS Worklets.
 const mainAudio = new Audio();
 // We allow iOS to handle background tasks naturally via MediaSession
 mainAudio.setAttribute('playsinline', '');
 document.body.appendChild(mainAudio);
+
+// ─── SoundTouchJS Audio Playback ─────────────────────────────────────────────
+let audioCtx = null;
+let currentBuffer = null;
+let activePitchShifter = null;
+let activeGainNode = null;
+let isSoundTouchPlaying = false;
+let soundTouchCurrentTime = 0;
+let soundTouchStartTime = 0;
+let soundTouchDuration = 0;
+let stTimeUpdateInterval = null;
 
 
 
@@ -424,10 +431,21 @@ function updatePlayPauseUI(isPlaying) {
         playIcon.classList.add('hidden');
         pauseIcon.classList.remove('hidden');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+        if (audioEngine === 'soundtouch') {
+            if (activePitchShifter) activePitchShifter.node.connect(activeGainNode);
+            isSoundTouchPlaying = true;
+            soundTouchStartTime = audioCtx.currentTime - soundTouchCurrentTime;
+            startSTTimeUpdate();
+        }
     } else {
         playIcon.classList.remove('hidden');
         pauseIcon.classList.add('hidden');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+        if (audioEngine === 'soundtouch') {
+            if (activePitchShifter) activePitchShifter.node.disconnect();
+            isSoundTouchPlaying = false;
+            stopSTTimeUpdate();
+        }
     }
 
     // Sync Modal Buttons
@@ -447,6 +465,23 @@ async function playSong(index) {
     isTransitioning = true;
     const song = songs[index];
     currentSongIndex = index;
+
+    if (audioEngine === 'soundtouch') {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (activePitchShifter) {
+            activePitchShifter.node.disconnect();
+            activePitchShifter = null;
+        }
+        if (activeGainNode) {
+            activeGainNode.disconnect();
+            activeGainNode = null;
+        }
+        stopSTTimeUpdate();
+        soundTouchCurrentTime = 0;
+        isSoundTouchPlaying = false;
+    }
 
     if (currentObjectURL && !currentObjectURL.startsWith('audio/')) {
         URL.revokeObjectURL(currentObjectURL);
@@ -511,70 +546,121 @@ async function playSong(index) {
                 album: 'Offline Player'
             });
             navigator.mediaSession.setActionHandler('play', () => {
-                mainAudio.play();
+                if (audioEngine === 'native') mainAudio.play();
                 updatePlayPauseUI(true);
             });
             navigator.mediaSession.setActionHandler('pause', () => {
-                mainAudio.pause();
+                if (audioEngine === 'native') mainAudio.pause();
                 updatePlayPauseUI(false);
             });
             navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
             navigator.mediaSession.setActionHandler('seekto', (details) => {
                 if (details.seekTime !== undefined) {
-                    mainAudio.currentTime = details.seekTime;
+                    if (audioEngine === 'native') {
+                        mainAudio.currentTime = details.seekTime;
+                    } else if (audioEngine === 'soundtouch' && activePitchShifter) {
+                        soundTouchCurrentTime = details.seekTime;
+                        activePitchShifter.percentagePlayed = soundTouchCurrentTime / soundTouchDuration;
+                        soundTouchStartTime = audioCtx.currentTime - (soundTouchCurrentTime / (activePitchShifter.rate || 1));
+                    }
                 }
             });
         }
-        mainAudio.removeEventListener('playing', onPlayStarted);
+        if (audioEngine === 'native') mainAudio.removeEventListener('playing', onPlayStarted);
     };
 
-    mainAudio.addEventListener('playing', onPlayStarted);
+    if (audioEngine === 'native') {
+        mainAudio.addEventListener('playing', onPlayStarted);
 
-    // Failsafe timeout to prevent spinning loaders if the promise hangs
-    const failsafe = setTimeout(() => {
-        loadingOverlay.classList.add('hidden');
-    }, 5000);
+        // Failsafe timeout to prevent spinning loaders if the promise hangs
+        const failsafe = setTimeout(() => {
+            loadingOverlay.classList.add('hidden');
+        }, 5000);
 
-    try {
-        await mainAudio.play();
-        clearTimeout(failsafe);
-    } catch (error) {
-        clearTimeout(failsafe);
-        if (error.name === 'AbortError') return;
-        // Fallback: If SW Proxy failed, fallback to direct Blob ObjectURL.
-        // We absolutely AVOID Base64 Data URIs as they mathematically freeze the main thread for large WAVs.
-        if (useSW) {
-            console.warn("SW Proxy rejected. Falling back to ObjectURL...", error);
-            mainAudio.src = audioUrl;
-            mainAudio.load();
-            mainAudio.playbackRate = savedSpeed;
-            mainAudio.preservesPitch = savedPitch;
-            try {
-                await mainAudio.play();
-            } catch (fallbackError) {
-                if (fallbackError.name === 'AbortError') return;
+        try {
+            await mainAudio.play();
+            clearTimeout(failsafe);
+        } catch (error) {
+            clearTimeout(failsafe);
+            if (error.name === 'AbortError') return;
+            // Fallback: If SW Proxy failed, fallback to direct Blob ObjectURL.
+            // We absolutely AVOID Base64 Data URIs as they mathematically freeze the main thread for large WAVs.
+            if (useSW) {
+                console.warn("SW Proxy rejected. Falling back to ObjectURL...", error);
+                mainAudio.src = audioUrl;
+                mainAudio.load();
+                mainAudio.playbackRate = savedSpeed;
+                mainAudio.preservesPitch = savedPitch;
+                try {
+                    await mainAudio.play();
+                } catch (fallbackError) {
+                    if (fallbackError.name === 'AbortError') return;
+                    loadingOverlay.classList.add('hidden');
+                    mainAudio.removeEventListener('playing', onPlayStarted);
+
+                    if (fallbackError.name === 'NotAllowedError') {
+                        const retry = confirm("iOS blocked automatic playback. Tap OK to retry playing manually.");
+                        if (retry) {
+                            mainAudio.play().catch(e => alert("Manual retry failed: " + e.message));
+                        }
+                    } else {
+                        alert(`Failed to play ${ext.toUpperCase()}.\nError: ${fallbackError.name}`);
+                    }
+                    updatePlayPauseUI(false);
+                }
+            } else {
                 loadingOverlay.classList.add('hidden');
                 mainAudio.removeEventListener('playing', onPlayStarted);
-
-                if (fallbackError.name === 'NotAllowedError') {
-                    const retry = confirm("iOS blocked automatic playback. Tap OK to retry playing manually.");
-                    if (retry) {
-                        mainAudio.play().catch(e => alert("Manual retry failed: " + e.message));
-                    }
-                } else {
-                    alert(`Failed to play ${ext.toUpperCase()}.\nError: ${fallbackError.name}`);
-                }
+                alert(`Failed to play ${ext.toUpperCase()}.\nError: ${error.name}\nMessage: ${error.message}`);
                 updatePlayPauseUI(false);
             }
-        } else {
-            loadingOverlay.classList.add('hidden');
-            mainAudio.removeEventListener('playing', onPlayStarted);
-            alert(`Failed to play ${ext.toUpperCase()}.\nError: ${error.name}\nMessage: ${error.message}`);
-            updatePlayPauseUI(false);
+        } finally {
+            isTransitioning = false;
         }
-    } finally {
-        isTransitioning = false;
+    } else if (audioEngine === 'soundtouch') {
+        try {
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+            const arrayBuffer = await safeBlob.arrayBuffer();
+            currentBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+            soundTouchDuration = currentBuffer.duration;
+            durationEl.textContent = formatTime(soundTouchDuration);
+            modalDuration.textContent = formatTime(soundTouchDuration);
+
+            activePitchShifter = new window.PitchShifter(audioCtx, currentBuffer, 4096);
+            activeGainNode = audioCtx.createGain();
+
+            // Initial Settings
+            activePitchShifter.tempo = savedSpeed;
+            activePitchShifter.pitch = savedPitch ? 1.0 : savedSpeed;
+
+            activePitchShifter.connect(activeGainNode);
+            activeGainNode.connect(audioCtx.destination);
+
+            activePitchShifter.on('play', (detail) => {
+                if (isSoundTouchPlaying) {
+                    soundTouchCurrentTime = detail.timePlayed;
+                }
+            });
+
+            // Fire play event instantly
+            onPlayStarted();
+
+        } catch (err) {
+            console.error("SoundTouch Initialization Error:", err);
+            alert("Failed to initialize high-quality audio. Falling back to native engine.");
+            audioEngine = 'native';
+            const nativeRadio = document.querySelector('input[name="audio-engine"][value="native"]');
+            if (nativeRadio) nativeRadio.checked = true;
+            localStorage.setItem('audioEngine', 'native');
+            isTransitioning = false;
+            playSong(index); // Retry natively
+        } finally {
+            isTransitioning = false;
+        }
     }
 }
 
@@ -764,25 +850,40 @@ fileInput.addEventListener('change', async (e) => {
 function togglePlayPause() {
     if (isTransitioning) return;
 
-    if (mainAudio.paused) {
-        if (mainAudio.src) {
-            isTransitioning = true;
-            mainAudio.play().then(() => {
-                updatePlayPauseUI(true);
-            }).catch(e => {
-                if (e.name !== 'AbortError') {
-                    console.error("Manual toggle play failed:", e);
-                    if (e.name === 'NotAllowedError') {
-                        alert("Playback blocked. Please tap again to start.");
+    if (audioEngine === 'native') {
+        if (mainAudio.paused) {
+            if (mainAudio.src) {
+                isTransitioning = true;
+                mainAudio.play().then(() => {
+                    updatePlayPauseUI(true);
+                }).catch(e => {
+                    if (e.name !== 'AbortError') {
+                        console.error("Manual toggle play failed:", e);
+                        if (e.name === 'NotAllowedError') {
+                            alert("Playback blocked. Please tap again to start.");
+                        }
                     }
-                }
-            }).finally(() => {
-                isTransitioning = false;
-            });
+                }).finally(() => {
+                    isTransitioning = false;
+                });
+            }
+        } else {
+            mainAudio.pause();
+            updatePlayPauseUI(false);
         }
     } else {
-        mainAudio.pause();
-        updatePlayPauseUI(false);
+        if (!isSoundTouchPlaying && activePitchShifter) {
+            activePitchShifter.node.connect(activeGainNode);
+            isSoundTouchPlaying = true;
+            soundTouchStartTime = audioCtx.currentTime - (soundTouchCurrentTime / (activePitchShifter.rate || 1));
+            startSTTimeUpdate();
+            updatePlayPauseUI(true);
+        } else if (isSoundTouchPlaying && activePitchShifter) {
+            activePitchShifter.node.disconnect();
+            isSoundTouchPlaying = false;
+            stopSTTimeUpdate();
+            updatePlayPauseUI(false);
+        }
     }
 }
 
@@ -900,7 +1001,7 @@ skipBackBtn.addEventListener('mouseleave', stopRewind);
 let timeUpdateFrame = null;
 
 function skipSeconds(seconds) {
-    if (mainAudio.src) {
+    if (audioEngine === 'native' && mainAudio.src) {
         const current = mainAudio.currentTime;
         const duration = mainAudio.duration;
         let newTime = current + seconds;
@@ -913,6 +1014,24 @@ function skipSeconds(seconds) {
 
         const percentage = (newTime / duration) * 100;
         mainAudio.currentTime = newTime;
+    } else if (audioEngine === 'soundtouch' && activePitchShifter) {
+        let newTime = soundTouchCurrentTime + seconds;
+        if (newTime < 0) newTime = 0;
+        if (newTime >= soundTouchDuration) {
+            handleSongEnd();
+            return;
+        }
+
+        soundTouchCurrentTime = newTime;
+        activePitchShifter.percentagePlayed = soundTouchCurrentTime / soundTouchDuration;
+        soundTouchStartTime = audioCtx.currentTime - (soundTouchCurrentTime / (activePitchShifter.rate || 1));
+
+        // Immediate UI update
+        const percent = (soundTouchCurrentTime / soundTouchDuration) * 100;
+        seekSlider.value = percent;
+        modalSeekSlider.value = percent;
+        currentTimeEl.textContent = formatTime(soundTouchCurrentTime);
+        modalCurrentTime.textContent = formatTime(soundTouchCurrentTime);
     }
 }
 
@@ -928,8 +1047,44 @@ function handleSongEnd() {
     }
 }
 
-// ─── Native Progress Polling (Replacement for loopTimeUpdate) ───────────────
+function handleSTTimeUpdate() {
+    if (!isSoundTouchPlaying || !activePitchShifter || !soundTouchDuration) return;
+
+    // Calculate actual time based on context time and speed
+    const currentRate = activePitchShifter.rate || 1;
+    soundTouchCurrentTime = (audioCtx.currentTime - soundTouchStartTime) * currentRate;
+
+    if (soundTouchCurrentTime >= soundTouchDuration) {
+        soundTouchCurrentTime = soundTouchDuration;
+        handleSongEnd();
+        return;
+    }
+
+    if (!isDraggingSeek) {
+        const percent = (soundTouchCurrentTime / soundTouchDuration) * 100;
+        seekSlider.value = isNaN(percent) ? 0 : percent;
+        modalSeekSlider.value = isNaN(percent) ? 0 : percent;
+        currentTimeEl.textContent = formatTime(soundTouchCurrentTime);
+        modalCurrentTime.textContent = formatTime(soundTouchCurrentTime);
+        updateSeekMarkers();
+    }
+}
+
+function startSTTimeUpdate() {
+    stopSTTimeUpdate();
+    stTimeUpdateInterval = setInterval(handleSTTimeUpdate, 100);
+}
+
+function stopSTTimeUpdate() {
+    if (stTimeUpdateInterval) {
+        clearInterval(stTimeUpdateInterval);
+        stTimeUpdateInterval = null;
+    }
+}
+
+// ─── Native Progress Polling ───────────────
 mainAudio.addEventListener('timeupdate', () => {
+    if (audioEngine !== 'native') return;
     const duration = mainAudio.duration || 0;
     const current = mainAudio.currentTime || 0;
 
@@ -966,16 +1121,22 @@ mainAudio.addEventListener('loadedmetadata', () => {
 
 seekSlider.addEventListener('input', () => {
     isSeeking = true;
-    const duration = mainAudio.duration || 0;
+    const duration = (audioEngine === 'native') ? (mainAudio.duration || 0) : soundTouchDuration;
     const time = (seekSlider.value / 100) * duration;
     currentTimeEl.textContent = formatTime(time);
 });
 
 seekSlider.addEventListener('change', () => {
     isSeeking = false;
-    const duration = mainAudio.duration || 0;
+    const duration = (audioEngine === 'native') ? (mainAudio.duration || 0) : soundTouchDuration;
     const time = (seekSlider.value / 100) * duration;
-    if (mainAudio.src) mainAudio.currentTime = time;
+    if (audioEngine === 'native' && mainAudio.src) {
+        mainAudio.currentTime = time;
+    } else if (audioEngine === 'soundtouch' && activePitchShifter) {
+        soundTouchCurrentTime = time;
+        activePitchShifter.percentagePlayed = soundTouchCurrentTime / soundTouchDuration;
+        soundTouchStartTime = audioCtx.currentTime - (soundTouchCurrentTime / (activePitchShifter.rate || 1));
+    }
 });
 
 // Modal Controls logic
@@ -984,7 +1145,13 @@ const modalSkipFwdBtn = document.getElementById('modal-skip-fwd-btn');
 
 if (modalSkipBackBtn) {
     modalSkipBackBtn.addEventListener('click', () => {
-        if (mainAudio.src) mainAudio.currentTime = 0;
+        if (audioEngine === 'native' && mainAudio.src) {
+            mainAudio.currentTime = 0;
+        } else if (audioEngine === 'soundtouch' && activePitchShifter) {
+            soundTouchCurrentTime = 0;
+            activePitchShifter.percentagePlayed = 0;
+            soundTouchStartTime = audioCtx.currentTime;
+        }
     });
 }
 if (modalSkipFwdBtn) {
@@ -1083,6 +1250,38 @@ closeSettingsBtn.addEventListener('click', () => {
     settingsView.classList.add('hidden');
 });
 
+// Audio Engine Settings
+const engineRadios = document.querySelectorAll('input[name="audio-engine"]');
+engineRadios.forEach(radio => {
+    if (radio.value === audioEngine) {
+        radio.checked = true;
+    }
+    radio.addEventListener('change', (e) => {
+        audioEngine = e.target.value;
+        localStorage.setItem('audioEngine', audioEngine);
+        // If a song is currently playing, we should switch engine immediately
+        if (currentSongIndex !== -1 && isTransitioning === false) {
+            const currentTime = (audioEngine === 'native')
+                ? soundTouchCurrentTime
+                : (mainAudio.currentTime || 0);
+
+            // playSong will pause the current engine and re-initialize the new one
+            playSong(currentSongIndex).then(() => {
+                // After engine is swapped, skip to the previous time
+                if (currentTime > 0 && !isTransitioning) { // Simple safety
+                    if (audioEngine === 'native') {
+                        mainAudio.currentTime = currentTime;
+                    } else if (audioEngine === 'soundtouch' && activePitchShifter) {
+                        soundTouchCurrentTime = currentTime;
+                        activePitchShifter.percentagePlayed = soundTouchCurrentTime / soundTouchDuration;
+                        soundTouchStartTime = audioCtx.currentTime - (soundTouchCurrentTime / (activePitchShifter.rate || 1));
+                    }
+                }
+            });
+        }
+    });
+});
+
 speedSlider.addEventListener('input', () => updateSpeed(false)); // UI only during drag
 speedSlider.addEventListener('change', () => updateSpeedAndRender()); // Save + re-render on drag end
 resetSpeedBtn.addEventListener('click', () => {
@@ -1160,7 +1359,7 @@ document.body.addEventListener('touchmove', function (e) {
 // Fix sliders on mobile - Explicit isolation
 // Custom Seek Logic for Mobile (Tap/Drag Anywhere)
 function handleSeekTouch(e) {
-    const duration = mainAudio.duration || 0;
+    const duration = (audioEngine === 'native') ? (mainAudio.duration || 0) : soundTouchDuration;
     if (!duration) return;
 
     // Prevent default to stop scrolling/native behavior
@@ -1182,7 +1381,13 @@ function handleSeekTouch(e) {
     seekSlider.value = percent;
 
     const time = (percent / 100) * duration;
-    if (mainAudio.src) mainAudio.currentTime = time;
+    if (audioEngine === 'native' && mainAudio.src) {
+        mainAudio.currentTime = time;
+    } else if (audioEngine === 'soundtouch' && activePitchShifter) {
+        soundTouchCurrentTime = time;
+        activePitchShifter.percentagePlayed = soundTouchCurrentTime / soundTouchDuration;
+        soundTouchStartTime = audioCtx.currentTime - (soundTouchCurrentTime / (activePitchShifter.rate || 1));
+    }
     currentTimeEl.textContent = formatTime(time);
 }
 
@@ -1199,7 +1404,7 @@ speedSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }
 
 // Modal Seek Slider logic with Tap-to-Seek support
 function handleModalSeekTouch(e) {
-    const duration = mainAudio.duration || 0;
+    const duration = (audioEngine === 'native') ? (mainAudio.duration || 0) : soundTouchDuration;
     if (!duration) return;
 
     // Prevent default to stop scrolling/native behavior
@@ -1221,9 +1426,12 @@ function handleModalSeekTouch(e) {
     modalSeekSlider.value = percent;
 
     const time = (percent / 100) * duration;
-    if (mainAudio.src) {
+    if (audioEngine === 'native' && mainAudio.src) {
         mainAudio.currentTime = time;
-        // lockScreenAudio.currentTime = time; // No longer sync lockScreenAudio currentTime
+    } else if (audioEngine === 'soundtouch' && activePitchShifter) {
+        soundTouchCurrentTime = time;
+        activePitchShifter.percentagePlayed = soundTouchCurrentTime / soundTouchDuration;
+        soundTouchStartTime = audioCtx.currentTime - (soundTouchCurrentTime / (activePitchShifter.rate || 1));
     }
     modalCurrentTime.textContent = formatTime(time);
 }

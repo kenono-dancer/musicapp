@@ -421,6 +421,25 @@
                         </p>
                     </div>
 
+                    <div class="audio-engine-section"
+                        style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <h3>Audio Engine</h3>
+                        <p style="font-size: 0.8em; color: #ccc; margin-bottom: 12px; line-height: 1.4;">
+                            Choose the playback engine. High Performance supports background playback. High Quality
+                            preserves pitch without noise when playing slow, but stops in background.
+                        </p>
+                        <div class="control-row" style="justify-content: flex-start; gap: 16px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em;">
+                                <input type="radio" name="audio-engine" value="native" checked>
+                                High Performance
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em;">
+                                <input type="radio" name="audio-engine" value="soundtouch">
+                                High Quality
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="system-section"
                         style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
                         <h3>System</h3>
@@ -438,6 +457,7 @@
                 </div>
             </div>
         </div>
+        <script src="lib/soundtouch.js"></script>
         <script src="app.js?v=2.120.8"></script>
         <script>
             // Emergency Fallback for Settings
